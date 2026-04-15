@@ -1,0 +1,282 @@
+"""Cấu hình mapping cho extraction và normalization.
+
+File này gom các rule cố định về một nơi để:
+- Dễ chỉnh khi demo
+- Dễ mở rộng sang domain mới
+- Tránh hardcode domain e-commerce
+"""
+
+HUMAN_ACTOR_KEYWORDS = (
+    "customer",
+    "user",
+    "reader",
+    "librarian",
+    "instructor",
+    "member",
+    "staff",
+    "administrator",
+    "admin",
+    "manager",
+    "employee",
+    "teacher",
+    "student",
+    "doctor",
+    "nurse",
+    "patient",
+    "receptionist",
+    "guest",
+    "client",
+    "buyer",
+    "seller",
+    "cashier",
+    "operator",
+    "supervisor",
+    "accountant",
+    "borrower",
+    "applicant",
+    "vendor",
+)
+
+EXTERNAL_ACTOR_KEYWORDS = (
+    "payment gateway",
+    "email service",
+    "notification service",
+    "sms service",
+    "api",
+    "third-party system",
+    "third-party service",
+    "external system",
+    "authentication service",
+    "identity provider",
+    "banking service",
+    "shipping service",
+    "delivery service",
+    "inventory system",
+    "erp system",
+    "crm system",
+    "reporting service",
+)
+
+IGNORE_AS_ACTOR = (
+    "system",
+    "application",
+    "platform",
+    "software",
+    "database",
+    "server",
+)
+
+ACTION_VERB_PATTERNS = (
+    "register",
+    "enroll",
+    "login",
+    "logout",
+    "search",
+    "view",
+    "browse",
+    "check",
+    "display",
+    "add",
+    "create",
+    "submit",
+    "update",
+    "delete",
+    "place",
+    "pay",
+    "borrow",
+    "return",
+    "reserve",
+    "schedule",
+    "approve",
+    "confirm",
+    "generate",
+    "manage",
+    "upload",
+    "download",
+    "send",
+    "notify",
+    "assign",
+    "review",
+    "track",
+    "book",
+)
+
+INTERNAL_STEP_EXCLUSIONS = (
+    "send confirmation",
+    "send reminder",
+    "send notification",
+    "notify user",
+    "notify customer",
+    "notify reader",
+    "notify patient",
+    "alert user",
+    "alert customer",
+    "alert reader",
+    "alert patient",
+    "overdue reminder",
+    "overdue reminders",
+    "validate input",
+    "validate data",
+    "update status",
+    "log activity",
+    "store data",
+    "save record",
+    "calculate total",
+    "verify payment",
+    "update stock",
+    "update inventory",
+)
+
+MERGE_RULES = {
+    "update stock": "Manage Products",
+    "update inventory": "Manage Inventory",
+    "update book inventory": "Manage Book Information",
+    "update room availability": "Manage Room Information",
+    "edit room availability": "Manage Room Information",
+    "delete room availability": "Manage Room Information",
+    "add/edit/delete product": "Manage Products",
+    "add edit delete product": "Manage Products",
+    "send confirmation": None,
+    "send reminder": None,
+}
+
+ACTOR_NAME_NORMALIZATION = {
+    "admin": "Administrator",
+}
+
+VERB_CANONICAL_MAP = {
+    "log in": "Login",
+    "login": "Login",
+    "sign in": "Login",
+    "log out": "Logout",
+    "logout": "Logout",
+    "sign out": "Logout",
+    "sign up": "Register",
+    "register account": "Register",
+    "create account": "Register",
+    "register": "Register",
+    "enroll in": "Enroll In",
+    "enroll": "Enroll",
+    "search": "Search",
+    "view": "View",
+    "browse": "Browse",
+    "check": "Check",
+    "display": "Display",
+    "add": "Add",
+    "create": "Create",
+    "submit": "Submit",
+    "update": "Update",
+    "delete": "Delete",
+    "place": "Place",
+    "make payment": "Make Payment",
+    "pay": "Pay",
+    "borrow": "Borrow",
+    "return": "Return",
+    "reserve": "Reserve",
+    "schedule": "Schedule",
+    "approve": "Approve",
+    "confirm": "Confirm",
+    "generate": "Generate",
+    "manage": "Manage",
+    "upload": "Upload",
+    "download": "Download",
+    "notify": "Notify",
+    "assign": "Assign",
+    "review": "Review",
+    "track": "Track",
+    "book": "Book",
+}
+
+SIMPLE_USE_CASE_PREFIXES = (
+    "Login",
+    "Logout",
+    "Search",
+    "View",
+    "Browse",
+    "Check",
+    "Display",
+    "Track",
+)
+
+AVERAGE_USE_CASE_PREFIXES = (
+    "Register",
+    "Return",
+    "Confirm",
+    "Approve",
+    "Pay",
+    "Make Payment",
+    "Schedule",
+    "Generate",
+    "Review",
+    "Upload",
+    "Download",
+)
+
+COMPLEX_USE_CASE_PREFIXES = (
+    "Place Order",
+    "Enroll",
+    "Borrow Books",
+    "Manage",
+    "Delete",
+    "Assign",
+    "Book Room",
+    "Book Rooms",
+    "Reserve",
+)
+
+SIMPLE_USE_CASE_ACTION_KEYWORDS = (
+    "login",
+    "logout",
+    "search",
+    "view",
+    "browse",
+    "check",
+    "display",
+    "track",
+)
+
+AVERAGE_USE_CASE_ACTION_KEYWORDS = (
+    "register",
+    "create",
+    "submit",
+    "update",
+    "confirm",
+    "approve",
+    "return",
+    "payment",
+    "pay",
+    "review",
+)
+
+COMPLEX_USE_CASE_ACTION_KEYWORDS = (
+    "book",
+    "booking",
+    "reserve",
+    "borrow",
+    "enroll",
+    "place order",
+    "order",
+    "manage",
+    "schedule",
+    "assign",
+)
+
+ROLE_LIKE_SUFFIXES = (
+    "er",
+    "or",
+    "ian",
+    "ist",
+    "ant",
+    "ent",
+)
+
+TRAILING_USE_CASE_FILLER_WORDS = (
+    "by",
+    "for",
+    "to",
+    "with",
+    "from",
+    "into",
+    "through",
+    "online",
+)

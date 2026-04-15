@@ -1,0 +1,10 @@
+# This file keeps common Python and Node build artifacts out of version control.
+
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+node_modules/
+dist/
+build/
