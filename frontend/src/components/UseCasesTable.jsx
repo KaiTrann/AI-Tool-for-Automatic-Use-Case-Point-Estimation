@@ -5,7 +5,7 @@ function UseCasesTable({ useCases }) {
       <div>
         <h2 className="section-title">Danh Sách Use Case</h2>
         <p className="section-copy">
-          Bảng này hiển thị các Use Case chức năng ngắn mà backend đã trích xuất từ Requirements Text.
+          Bảng này hiển thị các Use Case mà backend đã lấy ra từ Use Case Document template.
         </p>
       </div>
 

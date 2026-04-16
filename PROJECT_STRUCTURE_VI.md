@@ -1,104 +1,162 @@
 # Bản Đồ Project AI Tool for Automatic UCPE
 
-Tài liệu này giúp tra nhanh:
-- folder nào dùng để làm gì
-- file nào chứa logic gì
-- khi cần giải thích hoặc chứng minh một chức năng thì nên mở file nào
+Tài liệu này giúp bạn tra nhanh:
+- project có những folder nào
+- từng file chính dùng để làm gì
+- khi cần giải thích một chức năng thì nên mở file nào để chứng minh
 
 Lưu ý:
-- Tài liệu này tập trung vào file nguồn do nhóm tự viết
-- Không đi sâu vào `node_modules`, `.venv`, `.pytest_cache` vì đó là thư viện/phần sinh tự động
+- Tài liệu tập trung vào file source do nhóm viết
+- Không đi sâu vào `.venv`, `node_modules`, `__pycache__` vì đó là thư viện hoặc file sinh tự động
 
-## 1. Tổng quan thư mục
+## 1. Cấu trúc tổng quát
 
-### Thư mục gốc
+```text
+AI Tool for Automatic UCPE/
+├─ README.md
+├─ PROJECT_STRUCTURE_VI.md
+├─ THUYET_MINH_CODE_VI.md
+├─ backend/
+│  ├─ requirements.txt
+│  ├─ app/
+│  │  ├─ main.py
+│  │  ├─ api/
+│  │  │  ├─ router.py
+│  │  │  └─ routes/
+│  │  │     ├─ analysis.py
+│  │  │     └─ health.py
+│  │  ├─ models/
+│  │  │  ├─ request_models.py
+│  │  │  ├─ response_models.py
+│  │  │  ├─ requests.py
+│  │  │  └─ responses.py
+│  │  ├─ services/
+│  │  │  ├─ effort_estimation_service.py
+│  │  │  ├─ llm_extractor.py
+│  │  │  ├─ mapping_config.py
+│  │  │  ├─ prompt_templates.py
+│  │  │  ├─ schedule_estimation_service.py
+│  │  │  └─ ucp_calculator.py
+│  │  └─ utils/
+│  │     ├─ file_reader.py
+│  │     ├─ llm_json_parser.py
+│  │     ├─ normalization.py
+│  │     └─ parser.py
+│  └─ tests/
+│     ├─ test_api.py
+│     ├─ test_llm_extractor.py
+│     └─ test_ucp_calculator.py
+└─ frontend/
+   ├─ package.json
+   ├─ vite.config.js
+   ├─ index.html
+   └─ src/
+      ├─ App.jsx
+      ├─ main.jsx
+      ├─ api/
+      │  └─ client.js
+      ├─ components/
+      │  ├─ ActorsTable.jsx
+      │  ├─ ChartPanel.jsx
+      │  ├─ ResultCards.jsx
+      │  └─ UseCasesTable.jsx
+      ├─ pages/
+      │  └─ HomePage.jsx
+      ├─ styles/
+      │  └─ index.css
+      └─ utils/
+         └─ requestHelpers.js
+```
+
+## 2. File ở thư mục gốc
 
 - `README.md`
-  - Giới thiệu project, cách chạy backend/frontend, mô tả ý tưởng chung
+  - Hướng dẫn cài đặt và chạy project trên máy mới.
+  - Đây là file nên mở đầu tiên nếu người khác muốn chạy thử hệ thống.
 
 - `PROJECT_STRUCTURE_VI.md`
-  - Tài liệu bản đồ project bằng tiếng Việt
+  - Bản đồ file/folder bằng tiếng Việt.
+  - Dùng để tra nhanh “chức năng này nằm ở đâu”.
+
+- `THUYET_MINH_CODE_VI.md`
+  - Giải thích luồng chạy từ lúc người dùng nhập dữ liệu đến lúc ra UCP.
+  - Hữu ích khi thuyết trình hoặc bảo vệ đồ án.
 
 - `.gitignore`
-  - Khai báo file/thư mục không nên đưa lên Git
+  - Khai báo các file không nên đưa lên Git như `.venv`, `node_modules`, cache test.
 
-## 2. Backend
+## 3. Backend
 
 ### `backend/`
 
 - `requirements.txt`
-  - Danh sách thư viện Python cần cài cho backend
-  - Ví dụ: FastAPI, Uvicorn, Pydantic, Pytest
+  - Danh sách thư viện Python cần cài cho backend.
+  - Ví dụ: `fastapi`, `uvicorn`, `pydantic`, `pytest`.
 
 ### `backend/app/`
 
-Đây là thư mục code backend chính.
+Đây là nơi chứa toàn bộ code backend chính.
 
 - `main.py`
-  - Điểm khởi động của FastAPI
-  - Tạo app, bật CORS, nạp toàn bộ router API
-  - Khi chạy `uvicorn app.main:app --reload` thì file này được dùng
+  - Điểm khởi động FastAPI.
+  - Tạo app, bật CORS, nạp toàn bộ router.
+  - Khi chạy `uvicorn app.main:app --reload`, file này được dùng.
 
 ### `backend/app/api/`
 
-Chứa lớp route API.
+Chứa phần route API.
 
 - `router.py`
-  - Router tổng
-  - Gom các route nhỏ (`health`, `analysis`) lại để `main.py` include một lần
-
-- `__init__.py`
-  - Đánh dấu đây là package Python
+  - Router tổng.
+  - Gom các route nhỏ lại để `main.py` include một lần.
 
 ### `backend/app/api/routes/`
 
-Chứa các endpoint cụ thể.
-
 - `health.py`
-  - API `GET /health`
-  - Dùng để frontend kiểm tra backend có đang hoạt động hay không
+  - Chứa endpoint `GET /health`.
+  - Frontend dùng để kiểm tra backend còn hoạt động hay không.
 
 - `analysis.py`
-  - File API quan trọng nhất của backend
-  - Chứa:
+  - File route quan trọng nhất của backend.
+  - Chứa 3 endpoint chính:
     - `POST /extract`
     - `POST /ucp/calculate`
     - `POST /analyze-and-calculate`
-  - Đây là nơi nối:
-    - đọc input text/file
-    - gọi extraction service
-    - normalize dữ liệu
-    - tính UCP, Effort, Schedule
+  - Đây là nơi nối toàn bộ pipeline:
+    - đọc text
+    - đọc file upload
+    - gọi extraction
+    - gọi UCP calculator
+    - trả kết quả về frontend
 
 ### `backend/app/models/`
 
-Chứa các model dữ liệu Pydantic.
+Chứa các model Pydantic để validate request/response.
 
 - `request_models.py`
-  - Model cho bộ tính UCP core
-  - Chứa:
+  - Model cho phần tính UCP lõi.
+  - Gồm:
     - `Actor`
     - `UseCase`
     - `UCPRequest`
-  - Dùng ở tầng service tính toán
 
 - `response_models.py`
-  - Model response cho bộ tính UCP core
-  - Chứa `UCPResponse`
+  - Model response cho phần tính UCP lõi.
+  - Gồm:
+    - `UCPResponse`
 
 - `requests.py`
-  - Model request chính của backend API
-  - Chứa:
+  - Model request tổng quát dùng cho API backend.
+  - Gồm:
     - `ActorItem`
     - `UseCaseItem`
     - `ExtractRequest`
     - `AnalyzeAndCalculateRequest`
     - `UcpCalculateRequest`
-  - Dùng ở tầng route và extraction pipeline
 
 - `responses.py`
-  - Model response chính của backend API
-  - Chứa:
+  - Model response tổng quát dùng cho API backend.
+  - Gồm:
     - `HealthResponse`
     - `ExtractionResponse`
     - `UcpBreakdownResponse`
@@ -107,41 +165,41 @@ Chứa các model dữ liệu Pydantic.
     - `UcpCalculationResponse`
     - `AnalysisAndCalculationResponse`
 
-- `__init__.py`
-  - Đánh dấu package Python
-
 ### `backend/app/services/`
 
 Chứa logic nghiệp vụ chính.
 
 - `llm_extractor.py`
-  - Trung tâm của luồng trích xuất Actor và Use Case
-  - Có 2 mode:
+  - Trung tâm của pipeline trích xuất actor và use case.
+  - Hỗ trợ 2 kiểu đầu vào:
+    - text thường
+    - Use Case Document theo template
+  - Hỗ trợ 2 mode:
     - `mock`
     - `placeholder`
   - Công việc chính:
-    - ghép text đầu vào
-    - chọn mode extraction
-    - parse JSON extraction
-    - gọi normalization
-    - trả kết quả cuối cùng cho route
+    - ghép text nhập tay và text từ file
+    - phát hiện đầu vào có phải template hay không
+    - trích xuất actor và use case
+    - ước lượng complexity ban đầu
+    - parse JSON và gọi normalization
 
 - `prompt_templates.py`
-  - Chứa prompt mẫu cho LLM
-  - Dùng cho `placeholder mode`
-  - Hiện tại chưa gọi model thật nhưng đã có prompt sẵn để dễ nâng cấp sau này
+  - Chứa prompt mẫu cho placeholder LLM mode.
+  - Hiện tại project chưa gọi LLM thật, nhưng file này giữ sẵn prompt để sau này nâng cấp.
 
 - `mapping_config.py`
-  - Cấu hình rule/mapping cho normalization
-  - Đây là file rất quan trọng nếu cần chỉnh:
-    - từ khóa actor người dùng
-    - từ khóa external actor
+  - File cấu hình rule quan trọng nhất cho extraction/normalization.
+  - Dùng để chỉnh:
+    - keyword nhận diện human actor
+    - keyword nhận diện external actor
+    - danh sách internal step cần loại
     - rule merge use case
-    - rule classify complexity
-    - danh sách internal step cần loại bỏ
+    - rule phân loại simple / average / complex
+  - Nếu cần sửa rule cho domain mới như banking, hotel, library thì thường sửa ở file này.
 
 - `ucp_calculator.py`
-  - Bộ tính UCP cốt lõi
+  - Bộ tính UCP cốt lõi.
   - Chứa công thức:
     - actor weight
     - use case weight
@@ -152,147 +210,139 @@ Chứa logic nghiệp vụ chính.
     - effort estimation
 
 - `effort_estimation_service.py`
-  - Tính Effort từ UCP
+  - Tính effort từ UCP.
   - Công thức hiện tại:
     - `effort = UCP * productivity_factor`
 
 - `schedule_estimation_service.py`
-  - Tính Schedule từ Effort
+  - Tính schedule từ effort.
   - Công thức hiện tại:
     - `schedule = effort_hours / (team_size * 160)`
-
-- `__init__.py`
-  - Đánh dấu package Python
+  - Có làm tròn kiểu `ROUND_HALF_UP` để kết quả demo dễ đọc hơn.
 
 ### `backend/app/utils/`
 
-Chứa các hàm tiện ích hỗ trợ pipeline.
-
-- `normalization.py`
-  - File quan trọng bậc nhất của extraction pipeline
-  - Dùng để:
-    - bỏ `System` khỏi actor
-    - chuẩn hóa actor
-    - chuẩn hóa use case về dạng `Verb + Noun`
-    - loại internal step
-    - merge sub-action thành use case cha
-    - deduplicate
-    - phân loại lại complexity
-  - Nếu extraction sai tên hoặc sai complexity thì gần như chắc chắn phải xem file này
-
-- `llm_json_parser.py`
-  - Kiểm tra JSON do extractor trả về có đúng schema hay không
-  - Chuẩn hóa dữ liệu ban đầu trước khi vào normalization
-
-- `parser.py`
-  - Các helper xử lý text cơ bản
-  - Ví dụ:
-    - ghép text nhập tay + text từ file
-    - tách câu
-    - chuẩn hóa khoảng trắng
+Chứa các hàm hỗ trợ.
 
 - `file_reader.py`
-  - Đọc file upload và biến thành text
-  - Prototype hiện tại chủ yếu hỗ trợ đọc text đơn giản
+  - Đọc file upload và chuyển thành text.
+  - Hiện đang hỗ trợ:
+    - `.txt`
+    - `.md`
+    - `.docx`
+    - `.doc` theo kiểu best-effort
+  - Nếu người dùng upload Use Case Document dạng Word thì file này là nơi xử lý đầu tiên.
 
-- `__init__.py`
-  - Đánh dấu package Python
+- `llm_json_parser.py`
+  - Kiểm tra JSON extractor trả về có đúng schema không.
+  - Chuẩn hóa dữ liệu ban đầu trước khi đưa sang normalization.
+
+- `normalization.py`
+  - File cực kỳ quan trọng của extraction pipeline.
+  - Dùng để:
+    - bỏ `System` khỏi actor
+    - chuẩn hóa actor human/external
+    - đổi use case về dạng `Verb + Noun`
+    - giữ đúng domain noun
+    - loại internal step
+    - gộp sub-action
+    - deduplicate
+    - phân loại lại complexity
+  - Nếu extraction bị sai, gần như chắc chắn cần kiểm tra file này.
+
+- `parser.py`
+  - Các helper xử lý text cơ bản.
+  - Ví dụ:
+    - ghép nhiều nguồn text
+    - chuẩn hóa khoảng trắng
+    - tách câu
 
 ### `backend/tests/`
 
 Chứa test backend.
 
 - `test_api.py`
-  - Test endpoint FastAPI
-  - Khi cần chứng minh API chạy đúng thì mở file này
+  - Test các endpoint FastAPI.
+  - Dùng để chứng minh API chạy đúng end-to-end.
 
 - `test_llm_extractor.py`
-  - Test extraction + normalization
-  - Khi cần chứng minh:
-    - actor không bị sai
-    - use case không bị fragment
-    - complexity rule chạy đúng
-  - Đây là file nên mở đầu tiên nếu thầy/cô hỏi về extraction logic
+  - Test extraction và normalization.
+  - Đây là nơi chứng minh:
+    - actor được nhận diện đúng
+    - use case không bị sentence fragment
+    - internal step bị loại đúng
+    - complexity classifier hoạt động đúng theo từng domain
 
 - `test_ucp_calculator.py`
-  - Test công thức UCP, Effort, Schedule
-  - Khi cần chứng minh công thức đúng thì mở file này
+  - Test các công thức UCP, effort, schedule.
 
-## 3. Frontend
+## 4. Frontend
 
 ### `frontend/`
 
 - `package.json`
-  - Khai báo thư viện frontend và script chạy project
-  - Các lệnh chính:
+  - Danh sách thư viện frontend và script chạy project.
+  - Lệnh chính:
+    - `npm install`
     - `npm run dev`
     - `npm run build`
 
-- `package-lock.json`
-  - File lock version thư viện của npm
+- `vite.config.js`
+  - Cấu hình Vite cho frontend React.
 
 - `index.html`
-  - File HTML gốc để React mount vào
-
-- `vite.config.js`
-  - Cấu hình Vite
+  - File HTML gốc để React mount vào.
 
 ### `frontend/src/`
 
-Chứa mã nguồn React.
-
 - `main.jsx`
-  - Điểm khởi động React
-  - Render `App` vào DOM
+  - Điểm khởi động React.
 
 - `App.jsx`
-  - App chính
-  - Hiện tại chỉ render `HomePage`
+  - App chính, hiện render `HomePage`.
 
 ### `frontend/src/pages/`
 
 - `HomePage.jsx`
-  - File quan trọng nhất bên frontend
-  - Chứa luồng giao diện chính:
+  - File frontend quan trọng nhất.
+  - Chứa giao diện chính:
     - nhập text
-    - chọn file
+    - chọn file `.doc/.docx/.txt`
     - chọn `LLM Mode`
     - bấm `Extract`
     - bấm `Calculate`
-    - gọi API
-    - xử lý loading/success/error
-    - hiển thị kết quả extraction và UCP
-  - Nếu muốn đổi hành vi UI chính thì xem file này trước
+    - hiển thị loading, error, success
+  - Đây là nơi điều phối gọi API và cập nhật state kết quả.
 
 ### `frontend/src/api/`
 
 - `client.js`
-  - Nơi gom toàn bộ lệnh gọi API backend
+  - Gom tất cả lệnh gọi backend vào một nơi.
   - Chứa:
     - `checkHealth()`
     - `extractData()`
     - `calculateUCP()`
     - `analyzeAndCalculate()`
-  - Nếu frontend gọi sai API hoặc xử lý lỗi chưa đẹp thì xem file này
+  - Nếu frontend báo lỗi gọi API, nên kiểm tra file này trước.
 
 ### `frontend/src/utils/`
 
 - `requestHelpers.js`
-  - Hàm hỗ trợ tạo payload cho frontend
+  - Các hàm hỗ trợ tạo payload.
   - Ví dụ:
-    - tạo payload gửi sang `/ucp/calculate`
-    - tạo chữ ký input để biết extraction cũ còn hợp lệ không
+    - tạo chữ ký input để biết extraction cũ còn dùng được không
+    - build payload gửi sang `/ucp/calculate`
 
 ### `frontend/src/components/`
 
 - `ActorsTable.jsx`
-  - Hiển thị bảng Actor
+  - Hiển thị bảng actor.
 
 - `UseCasesTable.jsx`
-  - Hiển thị bảng Use Case
+  - Hiển thị bảng use case.
 
 - `ResultCards.jsx`
-  - Hiển thị các thẻ kết quả:
+  - Hiển thị các card kết quả:
     - UAW
     - UUCW
     - UCP
@@ -300,60 +350,61 @@ Chứa mã nguồn React.
     - Schedule
 
 - `ChartPanel.jsx`
-  - Hiển thị biểu đồ Chart.js
-  - So sánh số lượng Actor và Use Case theo mức complexity
+  - Hiển thị biểu đồ Chart.js cho phân bố độ phức tạp của actor và use case.
 
 ### `frontend/src/styles/`
 
 - `index.css`
-  - Toàn bộ style chính của giao diện
+  - Toàn bộ CSS chính của giao diện.
 
-## 4. Giải thích nhanh về LLM Mode
+## 5. Giải thích nhanh về LLM Mode
 
-`LLM Mode` hiện có 2 chế độ:
+### `Mock Mode`
 
-- `Mock Mode`
-  - Không gọi AI thật
-  - Dùng rule-based extraction nội bộ
-  - Phù hợp để demo ổn định, không phụ thuộc API key hay Internet
-  - Dùng tốt khi cần test, kiểm thử, trình bày trên lớp
+- Không gọi AI thật.
+- Backend dùng extractor rule-based nội bộ.
+- Phù hợp để demo ổn định trên lớp vì:
+  - không cần API key
+  - không phụ thuộc Internet
+  - kết quả nhất quán hơn
 
-- `Placeholder API Mode`
-  - Chưa gọi AI thật, nhưng mô phỏng đúng chỗ mà sau này sẽ nối LLM API
-  - Backend vẫn build prompt extraction
-  - Giúp project giữ kiến trúc rõ ràng:
-    - hôm nay chạy demo ổn định
-    - ngày mai có thể thay bằng LLM thật mà không phải sửa toàn bộ hệ thống
+### `Placeholder API Mode`
 
-## 5. Khi cần tìm file nào?
+- Chưa gọi AI thật, nhưng giữ sẵn kiến trúc để sau này nối LLM API.
+- Backend vẫn build prompt và đi qua pipeline như khi tích hợp thật.
+- Mục đích:
+  - chứng minh project có hướng mở rộng AI
+  - nhưng hiện tại vẫn chạy ổn định cho demo sinh viên
 
-- Muốn giải thích API chạy ở đâu:
+## 6. Khi bị hỏi “chức năng này nằm ở đâu?”
+
+- Muốn giải thích route API:
   - `backend/app/api/routes/analysis.py`
 
-- Muốn giải thích vì sao actor/use case bị đổi tên hoặc đổi complexity:
-  - `backend/app/utils/normalization.py`
-
-- Muốn giải thích prompt cho LLM:
-  - `backend/app/services/prompt_templates.py`
-
-- Muốn giải thích LLM Mode:
+- Muốn giải thích logic extract actor/use case:
   - `backend/app/services/llm_extractor.py`
-  - `frontend/src/pages/HomePage.jsx`
+
+- Muốn giải thích rule normalize và complexity:
+  - `backend/app/utils/normalization.py`
+  - `backend/app/services/mapping_config.py`
+
+- Muốn giải thích cách đọc file `.docx/.doc`:
+  - `backend/app/utils/file_reader.py`
 
 - Muốn giải thích công thức UCP:
   - `backend/app/services/ucp_calculator.py`
 
-- Muốn giải thích Effort và Schedule:
+- Muốn giải thích effort và schedule:
   - `backend/app/services/effort_estimation_service.py`
   - `backend/app/services/schedule_estimation_service.py`
 
-- Muốn giải thích frontend gọi backend như thế nào:
+- Muốn giải thích frontend gọi backend thế nào:
   - `frontend/src/api/client.js`
 
-- Muốn giải thích nút Extract / Calculate làm gì:
+- Muốn giải thích nút `Extract` và `Calculate`:
   - `frontend/src/pages/HomePage.jsx`
 
-- Muốn chứng minh hệ thống đã có test:
+- Muốn chứng minh project có test:
   - `backend/tests/test_api.py`
   - `backend/tests/test_llm_extractor.py`
   - `backend/tests/test_ucp_calculator.py`

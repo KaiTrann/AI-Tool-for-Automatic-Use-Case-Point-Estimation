@@ -6,6 +6,8 @@ File này gom các rule cố định về một nơi để:
 - Tránh hardcode domain e-commerce
 """
 
+# Danh sách từ khóa nhận diện human actor.
+# Theo rule của project, actor là người dùng thật sẽ luôn được xếp "complex".
 HUMAN_ACTOR_KEYWORDS = (
     "customer",
     "user",
@@ -37,6 +39,8 @@ HUMAN_ACTOR_KEYWORDS = (
     "vendor",
 )
 
+# Danh sách từ khóa nhận diện external actor.
+# Các actor kiểu service, gateway, API... sẽ được xếp "simple".
 EXTERNAL_ACTOR_KEYWORDS = (
     "payment gateway",
     "email service",
@@ -57,6 +61,8 @@ EXTERNAL_ACTOR_KEYWORDS = (
     "reporting service",
 )
 
+# Các từ không được xem là actor trong UCP.
+# Ví dụ "System" chỉ là đối tượng mô tả hệ thống, không phải actor tương tác từ bên ngoài.
 IGNORE_AS_ACTOR = (
     "system",
     "application",
@@ -66,12 +72,15 @@ IGNORE_AS_ACTOR = (
     "server",
 )
 
+# Danh sách động từ/hành động thường gặp để nhận diện candidate use case.
+# File extractor dùng danh sách này để kiểm tra một đoạn text có phải hành động chức năng hay không.
 ACTION_VERB_PATTERNS = (
     "register",
     "enroll",
     "login",
     "logout",
     "search",
+    "lookup",
     "view",
     "browse",
     "check",
@@ -82,6 +91,9 @@ ACTION_VERB_PATTERNS = (
     "update",
     "delete",
     "place",
+    "checkout",
+    # Nhóm banking mới thêm để nhận ra các use case chuyển tiền.
+    "transfer",
     "pay",
     "borrow",
     "return",
@@ -101,6 +113,8 @@ ACTION_VERB_PATTERNS = (
     "book",
 )
 
+# Các internal step cần loại khỏi danh sách use case.
+# Đây thường là hành vi nền của hệ thống, không phải business goal do actor chủ động thực hiện.
 INTERNAL_STEP_EXCLUSIONS = (
     "send confirmation",
     "send reminder",
@@ -127,6 +141,8 @@ INTERNAL_STEP_EXCLUSIONS = (
     "update inventory",
 )
 
+# Rule gộp nhiều sub-action nhỏ thành một use case cha dễ hiểu hơn.
+# Ví dụ "update room availability" sẽ được gom thành "Manage Room Information".
 MERGE_RULES = {
     "update stock": "Manage Products",
     "update inventory": "Manage Inventory",
@@ -140,10 +156,13 @@ MERGE_RULES = {
     "send reminder": None,
 }
 
+# Chuẩn hóa một số tên actor phổ biến để frontend hiển thị nhất quán.
 ACTOR_NAME_NORMALIZATION = {
     "admin": "Administrator",
 }
 
+# Chuẩn hóa động từ về một tên use case canonical.
+# Mục tiêu là đưa output về dạng ngắn gọn "Verb + Noun" để dễ tính UCP và dễ demo.
 VERB_CANONICAL_MAP = {
     "log in": "Login",
     "login": "Login",
@@ -157,6 +176,8 @@ VERB_CANONICAL_MAP = {
     "register": "Register",
     "enroll in": "Enroll In",
     "enroll": "Enroll",
+    "look up": "Lookup",
+    "lookup": "Lookup",
     "search": "Search",
     "view": "View",
     "browse": "Browse",
@@ -168,6 +189,14 @@ VERB_CANONICAL_MAP = {
     "update": "Update",
     "delete": "Delete",
     "place": "Place",
+    "checkout": "Checkout",
+    # Nhóm banking:
+    # cố định các tên liên quan chuyển tiền để output không bị lung tung giữa nhiều cách viết.
+    "transfer money": "Transfer Money",
+    "transfer funds": "Transfer Funds",
+    "transfer payment": "Transfer Payment",
+    "transfer": "Transfer",
+    "send money": "Send Money",
     "make payment": "Make Payment",
     "pay": "Pay",
     "borrow": "Borrow",
@@ -187,9 +216,12 @@ VERB_CANONICAL_MAP = {
     "book": "Book",
 }
 
+# Prefix ưu tiên cho nhóm simple.
+# Nếu use case bắt đầu bằng các hành động này thì thường là thao tác tra cứu/hiển thị đơn giản.
 SIMPLE_USE_CASE_PREFIXES = (
     "Login",
     "Logout",
+    "Lookup",
     "Search",
     "View",
     "Browse",
@@ -198,6 +230,8 @@ SIMPLE_USE_CASE_PREFIXES = (
     "Track",
 )
 
+# Prefix ưu tiên cho nhóm average.
+# Đây là các use case có mức xử lý trung bình như đăng ký, xác nhận, thanh toán, tạo dữ liệu.
 AVERAGE_USE_CASE_PREFIXES = (
     "Register",
     "Return",
@@ -212,8 +246,17 @@ AVERAGE_USE_CASE_PREFIXES = (
     "Download",
 )
 
+# Prefix ưu tiên cho nhóm complex.
+# Các action ở đây thường là transactional workflow nhiều bước hoặc quản trị mức cao.
 COMPLEX_USE_CASE_PREFIXES = (
     "Place Order",
+    # Nhóm banking mới:
+    # các use case chuyển tiền luôn được coi là complex vì có nhiều bước xác thực/giao dịch.
+    "Transfer Money",
+    "Transfer Funds",
+    "Transfer Payment",
+    "Send Money",
+    "Checkout",
     "Enroll",
     "Borrow Books",
     "Manage",
@@ -224,9 +267,11 @@ COMPLEX_USE_CASE_PREFIXES = (
     "Reserve",
 )
 
+# Bộ từ khóa action cho simple.
 SIMPLE_USE_CASE_ACTION_KEYWORDS = (
     "login",
     "logout",
+    "lookup",
     "search",
     "view",
     "browse",
@@ -235,6 +280,7 @@ SIMPLE_USE_CASE_ACTION_KEYWORDS = (
     "track",
 )
 
+# Bộ từ khóa action cho average.
 AVERAGE_USE_CASE_ACTION_KEYWORDS = (
     "register",
     "create",
@@ -248,19 +294,29 @@ AVERAGE_USE_CASE_ACTION_KEYWORDS = (
     "review",
 )
 
+# Bộ từ khóa action cho complex.
+# Đây là lớp fallback khi prefix không match nhưng câu vẫn mang tính giao dịch nhiều bước.
 COMPLEX_USE_CASE_ACTION_KEYWORDS = (
+    # Banking:
+    "transfer",
+    "transfer money",
+    "transfer funds",
+    "transfer payment",
+    "send money",
     "book",
     "booking",
     "reserve",
     "borrow",
     "enroll",
     "place order",
+    "checkout",
     "order",
     "manage",
     "schedule",
     "assign",
 )
 
+# Hậu tố dùng để đoán một từ có thể là vai trò con người khi extractor chưa chắc chắn.
 ROLE_LIKE_SUFFIXES = (
     "er",
     "or",
@@ -270,6 +326,7 @@ ROLE_LIKE_SUFFIXES = (
     "ent",
 )
 
+# Một vài từ nối thừa ở cuối use case sẽ bị cắt bỏ để tên ngắn và sạch hơn.
 TRAILING_USE_CASE_FILLER_WORDS = (
     "by",
     "for",

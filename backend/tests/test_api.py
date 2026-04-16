@@ -1,5 +1,8 @@
 """Bộ test API cơ bản cho backend."""
 
+from io import BytesIO
+from zipfile import ZipFile
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -53,6 +56,224 @@ An Email Service is used to send notifications.
 A Reporting Service integrates with the education platform.
 """
 
+USE_CASE_TEMPLATE_TEXT = """
+Use Case Document - Hotel Booking Management System
+Use Case 1: Register Account
+Use Case ID
+UC-01
+Use Case Name
+Register Account
+Primary Actor
+Guest
+Description
+A guest creates a new account in the hotel booking system.
+Main Flow
+Guest opens the registration page.
+Guest enters personal information.
+Guest submits the registration form.
+System validates the information.
+System creates a new account.
+System displays a success message.
+Alternative Flow
+If the email already exists, the system displays an error message.
+Postconditions
+A new guest account is created.
+Use Case 2: Book Room
+Use Case ID
+UC-03
+Use Case Name
+Book Room
+Primary Actor
+Guest
+Secondary Actor
+Payment Gateway
+Description
+A guest books an available room and makes an online payment.
+Main Flow
+Guest selects a room.
+System displays booking details.
+Guest confirms the reservation.
+System redirects payment to the Payment Gateway.
+Guest completes the payment.
+Payment Gateway returns payment status.
+System stores booking information.
+System sends a booking confirmation email.
+Alternative Flow
+If payment fails, the booking is cancelled.
+Postconditions
+A new reservation is created.
+"""
+
+FULL_HOTEL_USE_CASE_TEMPLATE_TEXT = """
+Use Case Document - Hotel Booking Management System
+Use Case 1: Register Account
+Use Case ID
+UC-01
+Use Case Name
+Register Account
+Primary Actor
+Guest
+Description
+A guest creates a new account in the hotel booking system.
+Preconditions
+The guest does not already have an account.
+Main Flow
+Guest opens the registration page.
+Guest enters personal information.
+Guest submits the registration form.
+System validates the information.
+System creates a new account.
+System displays a success message.
+Alternative Flow
+If the email already exists, the system displays an error message.
+Postconditions
+A new guest account is created.
+Use Case 2: Search Rooms
+Use Case ID
+UC-02
+Use Case Name
+Search Rooms
+Primary Actor
+Guest
+Description
+A guest searches for available rooms based on date, room type, and number of guests.
+Preconditions
+The system is online.
+Main Flow
+Guest enters search criteria.
+System checks room availability.
+System displays a list of available rooms.
+Alternative Flow
+If no rooms are available, the system displays a message.
+Postconditions
+The guest sees available room options.
+Use Case 3: Book Room
+Use Case ID
+UC-03
+Use Case Name
+Book Room
+Primary Actor
+Guest
+Secondary Actor
+Payment Gateway
+Description
+A guest books an available room and makes an online payment.
+Preconditions
+The guest is logged in.
+A room is available.
+Main Flow
+Guest selects a room.
+System displays booking details.
+Guest confirms the reservation.
+System redirects payment to the Payment Gateway.
+Guest completes the payment.
+Payment Gateway returns payment status.
+System stores booking information.
+System sends a booking confirmation email.
+Alternative Flow
+If payment fails, the booking is cancelled.
+If the selected room becomes unavailable, the system shows an error.
+Postconditions
+A new reservation is created.
+Payment is recorded.
+Use Case 4: Cancel Reservation
+Use Case ID
+UC-04
+Use Case Name
+Cancel Reservation
+Primary Actor
+Guest
+Description
+A guest cancels an existing reservation.
+Preconditions
+The guest has an active reservation.
+Main Flow
+Guest opens reservation details.
+Guest selects cancel reservation.
+System asks for confirmation.
+Guest confirms cancellation.
+System updates reservation status.
+System displays a cancellation message.
+Alternative Flow
+If the reservation cannot be cancelled, the system displays an error.
+Postconditions
+Reservation status is updated to cancelled.
+Use Case 5: Manage Room Information
+Use Case ID
+UC-05
+Use Case Name
+Manage Room Information
+Primary Actor
+Receptionist
+Description
+The receptionist manages hotel room details and availability.
+Preconditions
+Receptionist is logged in.
+Main Flow
+Receptionist opens the room management page.
+Receptionist adds, edits, or deletes room information.
+Receptionist updates room availability.
+System saves changes.
+System displays a success message.
+Alternative Flow
+If room information is invalid, the system displays an error.
+Postconditions
+Room information is updated.
+Use Case 6: Generate Monthly Report
+Use Case ID
+UC-06
+Use Case Name
+Generate Monthly Report
+Primary Actor
+Hotel Manager
+Description
+The hotel manager generates a monthly business report.
+Preconditions
+Hotel manager is logged in.
+Main Flow
+Hotel manager opens the reports page.
+Hotel manager selects a month.
+System gathers booking and revenue data.
+System generates the report.
+System displays the report.
+Postconditions
+A monthly report is generated and displayed.
+"""
+
+BANKING_TEXT = """
+The Customer can transfer money and view account balance.
+The Administrator can approve transaction.
+An external API is used to process banking requests.
+"""
+
+
+def build_mock_docx_bytes(text: str) -> bytes:
+    """Tạo file .docx tối giản trong bộ nhớ để test upload thật."""
+    buffer = BytesIO()
+    escaped_text = (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    paragraphs = "".join(
+        f"<w:p><w:r><w:t>{line}</w:t></w:r></w:p>"
+        for line in escaped_text.splitlines()
+        if line.strip()
+    )
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{paragraphs}</w:body>"
+        "</w:document>"
+    )
+
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<?xml version='1.0' encoding='UTF-8'?><Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'><Default Extension='xml' ContentType='application/xml'/><Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/><Override PartName='/word/document.xml' ContentType='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'/></Types>")
+        archive.writestr("_rels/.rels", "<?xml version='1.0' encoding='UTF-8'?><Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'><Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument' Target='word/document.xml'/></Relationships>")
+        archive.writestr("word/document.xml", document_xml)
+
+    return buffer.getvalue()
+
 
 def test_health() -> None:
     """API health phải luôn trả về trạng thái hoạt động."""
@@ -95,14 +316,16 @@ def test_extract_with_uploaded_plain_text_file() -> None:
 
 
 def test_extract_with_mock_docx_upload_content() -> None:
-    """API extract phải xử lý được mock uploaded content với tên file .docx."""
+    """API extract phải đọc được file .docx thật theo Use Case Document template."""
+    docx_bytes = build_mock_docx_bytes(USE_CASE_TEMPLATE_TEXT)
+
     response = client.post(
         "/extract",
         data={"text": "", "llm_mode": "placeholder"},
         files={
             "uploaded_file": (
                 "requirements.docx",
-                HOTEL_TEXT.encode("utf-8"),
+                docx_bytes,
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
         },
@@ -113,6 +336,7 @@ def test_extract_with_mock_docx_upload_content() -> None:
     actor_names = [actor["name"] for actor in payload["actors"]]
     use_case_names = [use_case["name"] for use_case in payload["use_cases"]]
     assert "Guest" in actor_names
+    assert "Payment Gateway" in actor_names
     assert "Book Room" in use_case_names
 
 
@@ -270,3 +494,61 @@ def test_analyze_and_calculate_returns_expected_education_metrics() -> None:
     assert payload["ucp"]["uucw"] == 160.0
     assert payload["ucp"]["uucp"] == 171.0
     assert payload["ucp"]["ucp"] == 171.0
+
+
+def test_analyze_and_calculate_returns_expected_hotel_template_metrics() -> None:
+    """Hotel Use Case Document đầy đủ phải ra đúng metrics sau khi Search Rooms được xếp simple."""
+    response = client.post(
+        "/analyze-and-calculate",
+        data={
+            "text": FULL_HOTEL_USE_CASE_TEMPLATE_TEXT,
+            "llm_mode": "placeholder",
+            "technical_complexity_factor": "1.0",
+            "environmental_complexity_factor": "1.0",
+            "productivity_factor": "20",
+            "team_size": "3",
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["ucp"]["uaw"] == 10.0
+    assert payload["ucp"]["uucw"] == 65.0
+    assert payload["ucp"]["uucp"] == 75.0
+    assert payload["ucp"]["ucp"] == 75.0
+    assert payload["effort"]["hours"] == 1500.0
+    assert payload["schedule"]["months"] == 3.13
+
+
+def test_analyze_and_calculate_returns_expected_banking_metrics() -> None:
+    """Banking domain phải ra đúng metrics sau khi thêm rule Transfer Money = complex."""
+    response = client.post(
+        "/analyze-and-calculate",
+        data={
+            "text": BANKING_TEXT,
+            "llm_mode": "placeholder",
+            "technical_complexity_factor": "1.0",
+            "environmental_complexity_factor": "1.0",
+            "productivity_factor": "20",
+            "team_size": "3",
+        },
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+    extracted_use_cases = {
+        use_case["name"]: use_case["complexity"]
+        for use_case in payload["extraction"]["use_cases"]
+    }
+
+    assert extracted_use_cases["Transfer Money"] == "complex"
+    assert extracted_use_cases["View Account Balance"] == "simple"
+    assert extracted_use_cases["Approve Transaction"] == "average"
+    assert payload["ucp"]["uaw"] == 7.0
+    assert payload["ucp"]["uucw"] == 30.0
+    assert payload["ucp"]["uucp"] == 37.0
+    assert payload["ucp"]["ucp"] == 37.0
+    assert payload["effort"]["hours"] == 740.0
+    assert payload["schedule"]["months"] == 1.54

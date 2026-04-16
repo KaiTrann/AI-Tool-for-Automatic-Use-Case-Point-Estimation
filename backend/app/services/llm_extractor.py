@@ -28,6 +28,21 @@ ACTION_SENTENCE_PATTERN = re.compile(
     r"\b(can|may|must|should|will|allows|lets)\b",
     re.IGNORECASE,
 )
+USE_CASE_BLOCK_PATTERN = re.compile(
+    r"Use Case\s+\d+\s*:\s*.+?(?=(?:\nUse Case\s+\d+\s*:)|\Z)",
+    re.IGNORECASE | re.DOTALL,
+)
+TEMPLATE_SECTION_LABELS = (
+    "Use Case ID",
+    "Use Case Name",
+    "Primary Actor",
+    "Secondary Actor",
+    "Description",
+    "Preconditions",
+    "Main Flow",
+    "Alternative Flow",
+    "Postconditions",
+)
 
 
 class LlmExtractionError(ValueError):
@@ -60,15 +75,19 @@ def extract_requirements(request_model: ExtractRequest) -> ExtractionResponse:
     # - gộp trùng
     # - sửa tên use case về verb + noun
     # - phân loại lại complexity theo rule cố định
+    normalization_source_text = ""
+    if not _looks_like_use_case_template(combined_text):
+        normalization_source_text = combined_text
+
     actors, use_cases = normalize_extraction_result(
         actors=raw_actors,
         use_cases=raw_use_cases,
-        source_text=combined_text,
+        source_text=normalization_source_text,
     )
 
     # Bước 5:
     # Trả thêm notes để frontend hiển thị người dùng đang chạy mode nào.
-    notes = _build_notes(request_model.llm_mode, request_model.file_name)
+    notes = _build_notes(request_model.llm_mode, request_model.file_name, combined_text)
     return ExtractionResponse(actors=actors, use_cases=use_cases, notes=notes)
 
 
@@ -85,6 +104,12 @@ def _generate_extraction_json(text: str, mode: str) -> str:
 
 def _build_mock_extraction_json(text: str) -> str:
     """Sinh JSON thô bằng rule-based extraction để demo local."""
+    if _looks_like_use_case_template(text):
+        # Nếu đầu vào là Use Case Document theo template,
+        # backend sẽ không trích xuất kiểu "tách câu tự do" nữa.
+        # Thay vào đó, hệ thống đọc theo từng block Use Case để kết quả sạch hơn.
+        return json.dumps(_extract_template_payload(text))
+
     # Mock mode hoàn toàn không phụ thuộc Internet hoặc API key.
     # Phù hợp để demo nhanh, ổn định và dễ kiểm thử.
     actors = _extract_raw_actors(text)
@@ -215,27 +240,40 @@ def _guess_raw_use_case_complexity(name: str) -> str:
 
     # Đây chỉ là complexity "đoán nhanh" ở layer 1.
     # Kết quả cuối cùng vẫn do normalization classifier quyết định.
-    if any(keyword in lowered_name for keyword in ["login", "log in", "search", "view", "browse", "check"]):
+    # Nhóm simple:
+    # đây là các use case tra cứu/hiển thị, ít bước, nên được đoán nhanh là simple.
+    if any(keyword in lowered_name for keyword in ["login", "log in", "search", "lookup", "view", "browse", "check", "display"]):
         return "simple"
-    if any(keyword in lowered_name for keyword in ["register", "create", "submit", "return", "confirm", "approve", "payment", "pay"]):
-        return "average"
+    # Nhóm complex:
+    # bao gồm cả các transactional workflow mới của banking như transfer/send money.
+    # Rule complex phải đứng trước average để tránh bị phân loại sai.
     if any(
         keyword in lowered_name
         for keyword in [
+            "transfer money",
+            "transfer funds",
+            "transfer payment",
+            "send money",
+            "transfer",
             "book",
             "reserve",
             "borrow",
             "place order",
+            "checkout",
             "enroll",
             "schedule",
             "manage",
         ]
     ):
         return "complex"
+    # Nhóm average:
+    # thường là tạo/cập nhật/xác nhận/thanh toán ở mức xử lý trung bình.
+    if any(keyword in lowered_name for keyword in ["register", "create", "submit", "return", "confirm", "approve", "payment", "pay", "update"]):
+        return "average"
     return "average"
 
 
-def _build_notes(mode: str, file_name: str | None) -> list[str]:
+def _build_notes(mode: str, file_name: str | None, source_text: str) -> list[str]:
     """Tạo ghi chú ngắn để frontend hiển thị trạng thái extraction."""
     notes = []
 
@@ -247,5 +285,197 @@ def _build_notes(mode: str, file_name: str | None) -> list[str]:
     if file_name:
         notes.append(f"Đã đọc nội dung text từ file upload '{file_name}'.")
 
+    if _looks_like_use_case_template(source_text):
+        notes.append("Đầu vào được nhận diện là Use Case Document theo template có các field như Use Case ID, Primary Actor, Main Flow và Postconditions.")
+
     notes.append("Kết quả đã qua normalization để bỏ 'System', gộp trùng, merge sub-action và giữ domain noun.")
     return notes
+
+
+def _looks_like_use_case_template(text: str) -> bool:
+    """Kiểm tra text có giống Use Case Document theo template hay không."""
+    lowered_text = text.lower()
+    required_markers = (
+        "use case id",
+        "use case name",
+        "primary actor",
+        "main flow",
+    )
+    return all(marker in lowered_text for marker in required_markers)
+
+
+def _extract_template_payload(text: str) -> dict[str, list[dict[str, str]]]:
+    """Trích xuất actor và use case từ Use Case Document có cấu trúc template."""
+    actor_map: dict[str, dict[str, str]] = {}
+    use_cases: list[dict[str, str]] = []
+
+    # Mỗi block "Use Case X" sẽ được đọc độc lập.
+    # Cách làm này giúp:
+    # - lấy đúng Use Case Name
+    # - lấy đúng Primary Actor / Secondary Actor
+    # - ước lượng complexity từ Main Flow / Alternative Flow
+    for block in USE_CASE_BLOCK_PATTERN.findall(text):
+        parsed_block = _parse_template_use_case_block(block)
+        if parsed_block is None:
+            continue
+
+        use_case_name = parsed_block["name"]
+        description = parsed_block["description"]
+        complexity = parsed_block["complexity"]
+
+        use_cases.append(
+            {
+                "name": use_case_name,
+                "complexity": complexity,
+                "description": description,
+            }
+        )
+
+        for actor_name in parsed_block["actors"]:
+            actor_map.setdefault(
+                actor_name.lower(),
+                {"name": actor_name, "complexity": "average"},
+            )
+
+    return {
+        "actors": list(actor_map.values()),
+        "use_cases": use_cases,
+    }
+
+
+def _parse_template_use_case_block(block: str) -> dict[str, object] | None:
+    """Phân tích một block Use Case trong tài liệu template."""
+    lines = [normalize_name(line) for line in block.splitlines() if normalize_name(line)]
+    if not lines:
+        return None
+
+    header_line = lines[0]
+    header_name = header_line.split(":", 1)[1].strip() if ":" in header_line else header_line
+    sections: dict[str, str] = {}
+    index = 1
+
+    # Vòng lặp này đọc từng nhãn section trong template như:
+    # Use Case Name, Primary Actor, Description, Main Flow...
+    while index < len(lines):
+        current_line = lines[index]
+
+        if current_line not in TEMPLATE_SECTION_LABELS:
+            index += 1
+            continue
+
+        label = current_line
+        index += 1
+        collected_lines: list[str] = []
+
+        while index < len(lines) and lines[index] not in TEMPLATE_SECTION_LABELS:
+            collected_lines.append(lines[index])
+            index += 1
+
+        sections[label] = "\n".join(collected_lines).strip()
+
+    use_case_name = sections.get("Use Case Name") or header_name
+    description = sections.get("Description", "")
+    actors = _split_actor_names(
+        sections.get("Primary Actor", ""),
+        sections.get("Secondary Actor", ""),
+    )
+    complexity = _estimate_template_use_case_complexity(
+        use_case_name=use_case_name,
+        main_flow_text=sections.get("Main Flow", ""),
+        alternative_flow_text=sections.get("Alternative Flow", ""),
+    )
+
+    if not use_case_name:
+        return None
+
+    return {
+        "name": use_case_name,
+        "description": description or None,
+        "actors": actors,
+        "complexity": complexity,
+    }
+
+
+def _split_actor_names(*actor_fields: str) -> list[str]:
+    """Tách danh sách actor từ các field Primary Actor / Secondary Actor."""
+    actor_names: list[str] = []
+
+    for field_value in actor_fields:
+        if not field_value:
+            continue
+
+        parts = re.split(r",| and | & ", field_value, flags=re.IGNORECASE)
+        for part in parts:
+            actor_name = normalize_name(part)
+            if actor_name:
+                actor_names.append(actor_name)
+
+    return actor_names
+
+
+def _estimate_template_use_case_complexity(
+    use_case_name: str,
+    main_flow_text: str,
+    alternative_flow_text: str,
+) -> str:
+    """Ước lượng complexity từ cấu trúc flow của template."""
+    lowered_name = use_case_name.lower()
+    main_steps = _count_flow_steps(main_flow_text)
+    alternative_steps = _count_flow_steps(alternative_flow_text)
+
+    # Ưu tiên 1:
+    # transactional workflow luôn được xếp complex.
+    # Rule này bao phủ cả domain banking như Transfer Money / Send Money.
+    if any(
+        lowered_name.startswith(keyword)
+        for keyword in (
+            "transfer",
+            "send money",
+            "book",
+            "reserve",
+            "borrow",
+            "place order",
+            "checkout",
+            "enroll",
+            "schedule",
+            "manage",
+        )
+    ):
+        return "complex"
+
+    # Ưu tiên 2:
+    # các action xử lý mức trung bình như register/confirm/pay/update.
+    if any(
+        lowered_name.startswith(keyword)
+        for keyword in ("register", "create", "submit", "confirm", "approve", "return", "payment", "pay", "update")
+    ):
+        return "average"
+
+    # Ưu tiên 3:
+    # nhóm tra cứu/hiển thị luôn simple, kể cả có alternative flow kiểu "không có kết quả".
+    if any(
+        lowered_name.startswith(keyword)
+        for keyword in ("login", "log in", "search", "view", "browse", "check", "display", "lookup", "look up")
+    ):
+        # Nhóm tra cứu/hiển thị luôn được xem là simple theo rule mới,
+        # dù tài liệu template có thêm Alternative Flow mô tả "không có kết quả".
+        return "simple"
+
+    # Nếu tên use case không rơi vào rule keyword ở trên,
+    # thì fallback sang số bước trong flow của template.
+    if main_steps >= 8 or alternative_steps >= 2:
+        return "complex"
+
+    if (main_steps + alternative_steps) >= 4 or alternative_steps >= 1:
+        return "average"
+
+    return "simple"
+
+
+def _count_flow_steps(flow_text: str) -> int:
+    """Đếm số bước trong Main Flow hoặc Alternative Flow."""
+    if not flow_text.strip():
+        return 0
+
+    lines = [normalize_name(line) for line in flow_text.splitlines() if normalize_name(line)]
+    return len(lines)

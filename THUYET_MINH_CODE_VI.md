@@ -1,31 +1,29 @@
 # Thuyết Minh Code AI Tool for Automatic UCPE
 
-Tài liệu này giải thích luồng chạy của hệ thống theo kiểu dễ trình bày:
+Tài liệu này giải thích luồng chạy của hệ thống theo cách dễ trình bày:
+- người dùng nhập dữ liệu ở đâu
+- frontend xử lý gì
+- backend xử lý gì
+- extraction chạy như thế nào
+- normalization làm gì
+- UCP được tính ra sao
+- kết quả quay lại giao diện thế nào
 
-1. Người dùng nhập dữ liệu ở đâu
-2. Frontend xử lý gì
-3. Backend nhận gì
-4. Extraction chạy ra sao
-5. Normalization làm gì
-6. UCP được tính như thế nào
-7. Kết quả trả về giao diện ra sao
-
-Mục tiêu là để khi bảo vệ đồ án hoặc bị hỏi về source code, bạn có thể kể lại luồng xử lý một cách logic, rõ ràng và bám sát file thật trong project.
-
----
+Mục tiêu là để khi bảo vệ đồ án, bạn có thể kể lại luồng chạy một cách logic và chỉ đúng file nếu bị hỏi sâu.
 
 ## 1. Mục tiêu của hệ thống
 
-Hệ thống này được xây dựng để hỗ trợ **Use Case Point Estimation** từ **Requirements Text** hoặc **Use Case Description** ở dạng văn bản tự nhiên.
+Hệ thống này dùng để hỗ trợ **Use Case Point Estimation** từ dữ liệu đầu vào mà người dùng cung cấp.
 
-Đầu vào của hệ thống là:
-- đoạn mô tả yêu cầu
-- đoạn use case mô tả ngắn
-- hoặc nội dung text lấy từ file upload
+Đầu vào hiện tại có thể là:
+- Requirements Text dạng văn bản thường
+- Use Case Description ngắn
+- Use Case Document theo template
+- file upload `.txt`, `.docx`, `.doc`
 
-Đầu ra của hệ thống là:
-- danh sách `Actor`
-- danh sách `Use Case`
+Đầu ra của hệ thống gồm:
+- danh sách `actors`
+- danh sách `use_cases`
 - `UAW`
 - `UUCW`
 - `UUCP`
@@ -33,147 +31,92 @@ Hệ thống này được xây dựng để hỗ trợ **Use Case Point Estimat
 - `Effort`
 - `Schedule`
 
-Điểm quan trọng là hệ thống **không yêu cầu người dùng phải nhập theo mẫu Use Case Specification đầy đủ**, mà chỉ cần đưa văn bản mô tả tự nhiên.
+Điểm quan trọng:
+- project có thể đọc văn bản tự nhiên
+- đồng thời cũng hỗ trợ đọc Use Case Document theo template khi người dùng upload file Word hoặc dán nội dung template vào ô nhập
 
----
+## 2. Luồng tổng quát từ đầu vào đến kết quả
 
-## 2. Luồng tổng quát của hệ thống
+Luồng chạy tổng quát của hệ thống như sau:
 
-Luồng chạy tổng quát có thể mô tả ngắn như sau:
+1. Người dùng nhập text hoặc chọn file trên frontend.
+2. Frontend gửi dữ liệu sang backend bằng API.
+3. Backend đọc text và nội dung file upload.
+4. Backend đưa dữ liệu vào `llm_extractor.py` để lấy actor và use case.
+5. Kết quả extraction đi qua `normalization.py` để làm sạch và chuẩn hóa.
+6. Dữ liệu đã chuẩn hóa được đưa vào `ucp_calculator.py` để tính UCP.
+7. Backend tính tiếp `Effort` và `Schedule`.
+8. Backend trả kết quả về frontend.
+9. Frontend hiển thị bảng actor, bảng use case, result cards và biểu đồ.
 
-1. Người dùng nhập text ở frontend.
-2. Frontend gửi dữ liệu sang backend.
-3. Backend đọc text và trích xuất actor/use case.
-4. Backend chuẩn hóa dữ liệu extraction.
-5. Backend dùng dữ liệu đã chuẩn hóa để tính UCP.
-6. Backend trả kết quả về frontend.
-7. Frontend hiển thị bảng, thẻ kết quả và biểu đồ.
+Nếu cần nói ngắn gọn khi thuyết trình, bạn có thể nói:
 
-Nếu muốn nói ngắn gọn khi thuyết trình, bạn có thể dùng câu sau:
-
-> Hệ thống của em gồm 3 lớp chính: extraction, normalization và UCP calculation. Frontend chỉ có nhiệm vụ nhập liệu và hiển thị; còn backend sẽ chịu trách nhiệm trích xuất, làm sạch dữ liệu và tính toán kết quả cuối cùng.
-
----
+> Hệ thống của em gồm 3 lớp chính: extraction, normalization và calculation. Frontend chỉ nhập liệu và hiển thị; còn backend chịu trách nhiệm đọc dữ liệu, trích xuất actor/use case, làm sạch dữ liệu và tính ra UCP, Effort, Schedule.
 
 ## 3. Bước 1: Người dùng nhập dữ liệu ở frontend
 
-### File liên quan
+### File chính
 
 - `frontend/src/pages/HomePage.jsx`
 
-### Vai trò của file này
+### Vai trò
 
-Đây là trang chính của hệ thống. Người dùng thao tác chủ yếu ở file này.
+Đây là trang chính của hệ thống. Người dùng thao tác chủ yếu ở đây.
 
-Tại đây có các ô nhập:
-- `Requirements Text / Use Case Description`
-- `Plain Text Input File`
-- `LLM Mode`
-- `TCF`
-- `ECF`
-- `Productivity Factor`
-- `Team Size`
+Trên giao diện hiện có:
+- ô nhập nội dung Use Case Document hoặc Requirements Text
+- ô chọn file upload
+- dropdown chọn `LLM Mode`
+- các ô nhập `TCF`, `ECF`, `Productivity Factor`, `Team Size`
+- nút `Extract`
+- nút `Calculate`
 
-Ngoài ra còn có 2 nút:
-- `Trích Xuất`
-- `Tính Toán`
+### Hai luồng chính từ frontend
 
-### Ý nghĩa thao tác của người dùng
+#### Luồng 1: chỉ trích xuất
 
-#### Khi bấm `Trích Xuất`
-
-Frontend sẽ gọi API:
-- `POST /extract`
-
-Mục tiêu:
-- chỉ lấy `Actor`
-- chỉ lấy `Use Case`
+Khi người dùng bấm `Extract`:
+- frontend gọi `POST /extract`
+- mục tiêu là lấy danh sách actor và use case
 - chưa tính UCP
 
-#### Khi bấm `Tính Toán`
+#### Luồng 2: trích xuất và tính toán
 
-Frontend có 2 trường hợp:
+Khi người dùng bấm `Calculate`:
+- nếu dữ liệu extraction cũ còn hợp lệ thì frontend gọi `POST /ucp/calculate`
+- nếu text/file vừa thay đổi hoặc chưa extract trước đó thì frontend gọi `POST /analyze-and-calculate`
 
-- Nếu trước đó đã extract và dữ liệu đầu vào chưa đổi:
-  - frontend gọi `POST /ucp/calculate`
-  - nghĩa là dùng dữ liệu extraction đang có để tính UCP luôn
+Ý nghĩa:
+- tránh gọi extraction lại nhiều lần không cần thiết
+- giao diện phản hồi nhanh hơn
+- luồng nghiệp vụ tách rõ hơn
 
-- Nếu người dùng chưa extract, hoặc đã đổi text, đổi file, đổi mode:
-  - frontend gọi `POST /analyze-and-calculate`
-  - nghĩa là backend sẽ vừa extract vừa tính trong một bước
+## 4. Bước 2: Frontend gọi backend
 
-### Vì sao frontend làm như vậy
-
-Lý do là để:
-- giảm gọi API lặp lại không cần thiết
-- giữ giao diện phản hồi nhanh hơn
-- và tách rõ luồng `extract` với luồng `calculate`
-
-### Các hàm chính ở frontend
-
-Trong `HomePage.jsx`, có các hàm:
-
-- `handleExtract()`
-  - gọi API trích xuất
-- `handleCalculate()`
-  - gọi API tính toán
-- `handleInputChange()`
-  - cập nhật state khi người dùng nhập dữ liệu
-
-Ngoài ra frontend còn dùng:
-- `buildInputSignature()`
-  - để biết dữ liệu nhập hiện tại có giống dữ liệu đã extract trước đó không
-- `buildUcpPayload()`
-  - để tạo payload gửi lên backend đúng định dạng
-
-Các hàm này nằm ở:
-- `frontend/src/utils/requestHelpers.js`
-
----
-
-## 4. Bước 2: Frontend gọi API backend
-
-### File liên quan
+### File chính
 
 - `frontend/src/api/client.js`
 
 ### Vai trò
 
-File này gom tất cả lệnh gọi API vào một nơi.
+File này gom tất cả lời gọi API vào một chỗ.
 
 Các hàm chính:
 - `checkHealth()`
-- `extractData(text, options)`
-- `calculateUCP(payload)`
-- `analyzeAndCalculate(text, options)`
+- `extractData()`
+- `calculateUCP()`
+- `analyzeAndCalculate()`
 
-### Ý nghĩa
+### Lợi ích của cách làm này
 
-Thay vì viết `fetch()` rải rác khắp giao diện, project gom lại vào `client.js` để:
-- code dễ đọc hơn
+- code frontend dễ đọc hơn
 - dễ sửa địa chỉ API hơn
-- dễ xử lý lỗi hơn
-
-### Xử lý lỗi
-
-`client.js` có:
-- `ApiError`
-- `formatErrorMessage()`
-
-Mục đích là:
-- khi backend trả lỗi validation
-- hoặc backend không chạy
-- frontend sẽ hiện lỗi dễ hiểu hơn cho người dùng
-
-Ví dụ:
-- backend chưa chạy thì hiện thông báo không thể kết nối
-- backend báo sai dữ liệu thì hiện chi tiết field bị lỗi
-
----
+- dễ xử lý loading và error hơn
+- dễ chứng minh khi bị hỏi “frontend gọi backend ở đâu?”
 
 ## 5. Bước 3: Backend nhận request
 
-### File liên quan
+### File chính
 
 - `backend/app/main.py`
 - `backend/app/api/router.py`
@@ -182,532 +125,457 @@ Ví dụ:
 
 ### Vai trò từng file
 
-#### `main.py`
+- `main.py`
+  - tạo app FastAPI
+  - bật CORS
+  - include router
 
-Đây là điểm khởi động của FastAPI.
+- `router.py`
+  - gom route `health` và `analysis`
 
-Nó làm 3 việc chính:
-- tạo ứng dụng FastAPI
-- bật CORS để frontend React gọi được backend
-- nạp router tổng
+- `health.py`
+  - chứa `GET /health`
 
-#### `router.py`
+- `analysis.py`
+  - chứa toàn bộ endpoint chính:
+    - `POST /extract`
+    - `POST /ucp/calculate`
+    - `POST /analyze-and-calculate`
 
-File này gom các nhóm route:
-- `health`
-- `analysis`
+Nếu bị hỏi “API quan trọng nhất nằm ở đâu?”, câu trả lời là:
+- `backend/app/api/routes/analysis.py`
 
-#### `health.py`
+## 6. Bước 4: Backend đọc text và file upload
 
-Chứa API:
-- `GET /health`
-
-Frontend dùng API này để kiểm tra backend có đang hoạt động hay không.
-
-#### `analysis.py`
-
-Đây là file route quan trọng nhất.
-
-Nó chứa 3 endpoint chính:
-- `POST /extract`
-- `POST /ucp/calculate`
-- `POST /analyze-and-calculate`
-
----
-
-## 6. Bước 4: Backend đọc input text và file upload
-
-### File liên quan
+### File chính
 
 - `backend/app/api/routes/analysis.py`
 - `backend/app/utils/file_reader.py`
 - `backend/app/utils/parser.py`
 
-### Luồng hoạt động
+### Luồng xử lý
 
-Khi request đi vào route `extract` hoặc `analyze-and-calculate`, backend sẽ:
+Khi backend nhận request:
 
-1. đọc text từ form
-2. đọc file upload nếu có
-3. biến nội dung file thành text
-4. gộp text nhập tay và text từ file thành một chuỗi chung
+1. lấy text do người dùng nhập
+2. nếu có file upload thì đọc file
+3. chuyển nội dung file thành text
+4. ghép text nhập tay và text từ file thành một chuỗi chung
 
 ### `file_reader.py` làm gì
 
-File này có hàm:
-- `read_uploaded_text(uploaded_file)`
+File này chịu trách nhiệm đọc file upload và chuyển về text.
 
-Hàm này:
-- đọc bytes của file
-- thử decode sang UTF-8
-- nếu lỗi thì fallback sang latin-1
+Hiện tại file hỗ trợ:
+- `.txt`
+- `.md`
+- `.docx`
+- `.doc` theo kiểu best-effort
 
-Mục tiêu là để prototype có thể đọc được file text đơn giản mà không làm hệ thống quá phức tạp.
+Ý nghĩa:
+- nếu người dùng không muốn gõ tay mà muốn upload Use Case Document thì backend vẫn xử lý được
 
 ### `parser.py` làm gì
 
 File này có các helper cơ bản:
 - `combine_text_sources()`
-  - ghép text nhập tay và text từ file
-- `split_sentences()`
-  - tách đoạn văn thành câu
+  - ghép nhiều nguồn text
 - `normalize_name()`
   - chuẩn hóa khoảng trắng
+- `split_sentences()`
+  - tách câu
 
----
+## 7. Bước 5: Backend chọn LLM Mode
 
-## 7. Bước 5: Backend chọn LLM Mode để extraction
-
-### File liên quan
+### File chính
 
 - `backend/app/services/llm_extractor.py`
 - `backend/app/services/prompt_templates.py`
 
-### Đây là nơi `LLM Mode` thực sự có tác dụng
+### `LLM Mode` có tác dụng gì
 
-Trong `llm_extractor.py`, hàm chính là:
-- `extract_requirements(request_model)`
+Đây là nơi dropdown `LLM Mode` trên frontend thực sự ảnh hưởng đến hệ thống.
 
-Hàm này sẽ gọi:
+Trong `llm_extractor.py`, hàm:
+- `extract_requirements()`
+
+sẽ gọi:
 - `_generate_extraction_json(text, mode)`
 
-Tại đây backend sẽ kiểm tra giá trị `llm_mode`.
+Tại đây backend chọn nhánh xử lý theo mode.
 
-### Nếu là `mock`
+### `Mock Mode`
 
-Backend chạy:
-- `_build_mock_extraction_json(text)`
+- không gọi LLM thật
+- dùng extractor rule-based nội bộ
+- phù hợp để demo ổn định
+- không cần Internet hay API key
 
-Nghĩa là:
-- dùng extractor nội bộ theo rule
-- không gọi AI thật
+### `Placeholder API Mode`
 
-### Nếu là `placeholder`
+- chưa gọi LLM thật
+- nhưng vẫn build prompt qua `prompt_templates.py`
+- giữ sẵn kiến trúc để sau này thay bằng API thật
 
-Backend chạy:
-- `_call_placeholder_llm_api(text)`
+Nói ngắn gọn:
 
-Hiện tại hàm này:
-- build prompt qua `build_extraction_prompt()`
-- nhưng vẫn trả về dữ liệu từ extractor nội bộ
+> LLM Mode dùng để chọn nhánh trích xuất. Mock Mode phục vụ demo ổn định. Placeholder Mode mô phỏng vị trí tích hợp LLM thật trong tương lai.
 
-Điều này có ý nghĩa rất quan trọng về mặt kiến trúc:
-- hệ thống đã có sẵn vị trí để nối LLM thật
-- nhưng ở phiên bản demo vẫn giữ kết quả ổn định
+## 8. Bước 6: Hệ thống phát hiện loại đầu vào
 
-### Khi trình bày, bạn có thể nói
-
-> Trong project hiện tại, LLM Mode dùng để chọn nhánh extraction. Mock Mode phục vụ demo local ổn định. Placeholder API Mode mô phỏng chỗ tích hợp LLM thật, giúp hệ thống dễ nâng cấp trong tương lai mà không cần đổi kiến trúc.
-
----
-
-## 8. Bước 6: Extraction thô actor và use case
-
-### File liên quan
+### File chính
 
 - `backend/app/services/llm_extractor.py`
 
-### Ý tưởng của extraction thô
+### Hai kiểu đầu vào chính
 
-Project chia extraction thành 2 lớp:
+#### Kiểu 1: văn bản tự nhiên
 
-1. lớp trích xuất thô
-2. lớp normalization làm sạch lại
+Ví dụ:
+- mô tả yêu cầu ngắn
+- requirement paragraph
+- use case description thường
 
-Lý do chia như vậy:
+Hệ thống sẽ:
+- tách câu
+- tìm actor
+- tìm action
+- sinh candidate use case
+
+#### Kiểu 2: Use Case Document theo template
+
+Ví dụ có các trường:
+- `Use Case ID`
+- `Use Case Name`
+- `Primary Actor`
+- `Secondary Actor`
+- `Description`
+- `Main Flow`
+- `Alternative Flow`
+- `Postconditions`
+
+Hệ thống sẽ:
+- nhận diện đây là template
+- tách theo từng block `Use Case`
+- lấy trực tiếp actor từ `Primary Actor` và `Secondary Actor`
+- lấy use case name từ `Use Case Name`
+- ước lượng complexity từ `Main Flow` và `Alternative Flow`
+
+Điểm quan trọng:
+- khi đã nhận ra đây là template thì backend không cố trích xuất kiểu “đoán từ câu tự nhiên” nữa
+- như vậy kết quả sẽ sạch hơn
+
+## 9. Bước 7: Extraction thô actor và use case
+
+### File chính
+
+- `backend/app/services/llm_extractor.py`
+
+### Ý tưởng
+
+Project chia extraction thành 2 tầng:
+
+1. extraction thô
+2. normalization làm sạch lại
+
+Lý do:
 - extraction ban đầu có thể chưa hoàn hảo
-- nhưng normalization sẽ sửa lại để dữ liệu dùng được cho UCP
+- normalization sẽ sửa lại để dữ liệu đủ sạch cho UCP
 
 ### Trích xuất actor
 
-Hàm:
-- `_extract_raw_actors(text)`
+Các hàm liên quan:
+- `_extract_raw_actors()`
+- `_split_actor_names()`
 
-Nó dùng regex để bắt các mẫu câu như:
-- `The Customer can ...`
-- `The Administrator can ...`
-- `Payment Gateway ...`
+Với text tự nhiên:
+- backend dùng regex để tìm các mẫu như:
+  - `The Customer can ...`
+  - `The Administrator can ...`
+  - `Payment Gateway ...`
 
-Kết quả lúc này mới chỉ là candidate, chưa chắc đúng hoàn toàn.
+Với template:
+- backend lấy actor trực tiếp từ:
+  - `Primary Actor`
+  - `Secondary Actor`
 
 ### Trích xuất use case
 
-Hàm:
-- `_extract_raw_use_cases(text)`
+Các hàm liên quan:
+- `_extract_raw_use_cases()`
+- `_split_action_sentence()`
+- `_clean_raw_use_case_segment()`
 
-Luồng làm việc:
-
-1. tách đoạn văn thành từng câu
-2. kiểm tra câu có dấu hiệu hành động hay không
-3. cắt bỏ phần chủ ngữ
-4. tách một câu thành nhiều hành động nhỏ
-5. tạo danh sách use case thô
+Với text tự nhiên:
+- backend tách câu
+- cắt bỏ chủ ngữ
+- tách nhiều action trong cùng một câu
+- tạo danh sách use case thô
 
 Ví dụ:
 
-Nếu câu là:
-
 `The Customer can browse products, search products, and place order.`
 
-thì extractor thô sẽ tách ra thành các đoạn:
+sẽ được tách thành:
 - `browse products`
 - `search products`
 - `place order`
 
-Sau đó gán complexity sơ bộ ban đầu.
+Với template:
+- backend lấy trực tiếp `Use Case Name`
+- không cần đoán từ sentence fragment
 
-### Vì sao chỉ gán complexity sơ bộ
+## 10. Bước 8: Parse JSON extraction
 
-Vì complexity cuối cùng sẽ do normalization classifier xử lý lại.
-
-Điều này giúp:
-- giữ layer extraction đơn giản
-- dồn logic quan trọng về một chỗ chung là normalization
-
----
-
-## 9. Bước 7: Parse JSON extraction
-
-### File liên quan
+### File chính
 
 - `backend/app/utils/llm_json_parser.py`
 
 ### Vai trò
 
-Sau khi extractor trả ra JSON, backend không dùng ngay mà phải parse và validate lại.
+Sau khi extractor tạo JSON, backend không dùng ngay mà phải parse và validate lại.
 
-Hàm chính:
-- `parse_llm_extraction_json(raw_json)`
+Parser sẽ:
+- kiểm tra JSON đúng cấu trúc hay không
+- kiểm tra `complexity` có hợp lệ không
+- chuẩn hóa tên và giá trị cơ bản
 
-### Công việc của parser
+Ý nghĩa:
+- tránh backend bị lỗi do JSON sai
+- giữ schema nhất quán
+- giúp bước normalization phía sau ổn định hơn
 
-1. đọc JSON string
-2. kiểm tra đúng schema hay không
-3. kiểm tra complexity có phải:
-   - `simple`
-   - `average`
-   - `complex`
-4. bỏ các phần tử trùng tên
+## 11. Bước 9: Normalization là lớp quan trọng nhất
 
-### Vì sao bước này cần thiết
-
-Nếu bỏ qua parser:
-- JSON lỗi có thể làm backend crash
-- complexity sai có thể làm công thức UCP bị sai
-- dữ liệu không nhất quán sẽ rất khó debug
-
----
-
-## 10. Bước 8: Normalization là lớp quan trọng nhất
-
-### File liên quan
+### File chính
 
 - `backend/app/utils/normalization.py`
 - `backend/app/services/mapping_config.py`
 
-Đây là phần quan trọng nhất của toàn bộ backend extraction pipeline.
-
 Nếu bị hỏi:
-- “Vì sao actor này lại bị loại?”
-- “Vì sao use case này lại đổi tên?”
-- “Vì sao complexity này thành complex?”
+- vì sao actor này bị bỏ
+- vì sao use case này bị đổi tên
+- vì sao complexity lại thành `complex`
 
-thì gần như câu trả lời sẽ nằm ở `normalization.py` hoặc `mapping_config.py`.
+thì phần lớn câu trả lời nằm ở hai file này.
 
-### Mục tiêu của normalization
+### 11.1. Normalization actor
 
-Normalization giúp:
-- làm sạch dữ liệu extraction
-- loại bỏ kết quả sai
-- chuẩn hóa tên
-- deduplicate
-- phân loại lại complexity
-
-### 10.1. Chuẩn hóa actor
-
-Hàm:
+Các hàm chính:
 - `normalize_actors()`
 - `_normalize_actor_item()`
 
-Các rule chính:
-
-- bỏ `System` khỏi actor
-- human actor luôn là `complex`
-  - ví dụ: Customer, Student, Instructor, Guest, Doctor
-- external system luôn là `simple`
-  - ví dụ: Payment Gateway, Email Service, API
-- nếu actor trùng nhau thì chỉ giữ một
-- nếu có actor chung chung và actor cụ thể hơn:
-  - `Manager`
-  - `Hotel Manager`
-  - thì giữ `Hotel Manager`
-
-### 10.2. Chuẩn hóa use case
-
-Hàm:
-- `normalize_use_cases()`
-- `_normalize_use_case_item()`
-
-Các rule chính:
-
-- đưa tên về dạng `Verb + Noun`
-- giữ domain noun
-  - `Search Books` vẫn là `Search Books`
-  - không đổi thành `Search Products`
-- bỏ sentence fragment
-- bỏ internal step
-  - ví dụ:
-    - `Send Confirmation`
-    - `Send Reminder`
-    - `Notify User`
-    - `Update Status`
-- merge sub-action thành use case cha
-  - ví dụ:
-    - `update room availability`
-    - `delete room information`
-    - có thể được gom về `Manage Room Information`
-
-### 10.3. Phân loại complexity
-
-Hàm:
-- `_classify_use_case_complexity()`
-
 Rule chính:
-
-- `simple`
-  - login
-  - search
-  - view
-  - browse
-  - check
-
-- `average`
-  - register
-  - create
-  - submit
-  - confirm
-  - approve
-  - return
-  - payment
-
-- `complex`
-  - book
-  - reserve
-  - borrow
-  - place order
-  - enroll
-  - schedule
-  - manage
-
-Thứ tự ưu tiên:
-- complex override average
-- average override simple
-
-Ngoài ra còn có rule tránh phân loại sai do domain noun.
+- bỏ `System`
+- human actor luôn là `complex`
+- external actor luôn là `simple`
+- chuẩn hóa tên actor như `Admin -> Administrator`
+- loại actor trùng
+- nếu có actor chung chung và actor cụ thể hơn thì giữ actor cụ thể hơn
 
 Ví dụ:
-- `Book Rooms`
-  - chữ `Book` ở đầu là động từ
-  - nên là `complex`
+- `Manager`
+- `Hotel Manager`
 
-- `View Book Details`
-  - chữ `Book` ở đây là danh từ chỉ domain object
-  - nên không được hiểu nhầm là hành động `book`
+thì giữ:
+- `Hotel Manager`
 
-Đây là lý do project có hàm:
-- `_contains_action_keyword()`
+### 11.2. Normalization use case
 
-### Ý nghĩa học thuật của normalization
+Các hàm chính:
+- `normalize_use_cases()`
+- `_normalize_use_case_item()`
+- `_extract_canonical_use_case_name()`
 
-Nếu không có normalization:
-- extraction rất dễ bị sai
-- UAW sai
-- UUCW sai
-- UCP sai toàn bộ
+Rule chính:
+- đưa về dạng `Verb + Noun`
+- giữ đúng domain noun
+- loại sentence fragment
+- loại internal step
+- gộp sub-action thành use case cha
+- loại trùng
 
-Nói cách khác:
+Ví dụ:
+- `update room availability`
+- `delete room information`
 
-> Extraction cho dữ liệu thô, nhưng normalization mới là lớp biến dữ liệu thô thành dữ liệu đủ sạch để dùng cho UCP.
+có thể được gom thành:
+- `Manage Room Information`
 
----
+### 11.3. Loại internal step
 
-## 11. Bước 9: Dữ liệu được đưa vào bộ tính UCP
-
-### File liên quan
-
-- `backend/app/api/routes/analysis.py`
-- `backend/app/models/request_models.py`
-- `backend/app/services/ucp_calculator.py`
-
-### Luồng chuyển dữ liệu
-
-Sau khi extraction được normalize xong, backend tạo một object `UCPRequest`.
-
-Model này chứa:
-- `actors`
-- `use_cases`
-- `tcf`
-- `ecf`
-- `productivity_factor`
-
-Trước khi đi vào bộ tính, backend đảm bảo:
-- có ít nhất 1 actor
-- có ít nhất 1 use case
-- các hệ số lớn hơn 0
-
-### Vì sao cần model riêng cho UCP
-
-Để tách biệt:
-- dữ liệu API
-- và dữ liệu nội bộ của công thức
-
-Nhờ vậy phần tính toán:
-- đơn giản hơn
-- dễ test hơn
-- dễ giải thích hơn
-
----
-
-## 12. Bước 10: Tính UCP
-
-### File liên quan
-
-- `backend/app/services/ucp_calculator.py`
-
-Đây là file chứa công thức lõi.
-
-### 12.1. Tính trọng số actor
-
-Hàm:
-- `calculate_actor_weight(complexity)`
+Các hàm chính:
+- `_is_internal_step()`
+- `_is_background_processing_sentence()`
 
 Rule:
+- các hành vi nền như:
+  - `Send Confirmation`
+  - `Send Reminder`
+  - `Notify User`
+  - `Update Status`
+
+sẽ bị loại khỏi use case list
+
+Lý do:
+- đây không phải business goal mà actor theo đuổi
+- đây chỉ là hành vi nội bộ của hệ thống
+
+### 11.4. Rule đặc biệt cho banking
+
+Project đã được sửa thêm cho domain banking.
+
+Điểm quan trọng:
+- `Transfer Money`
+- `Transfer Funds`
+- `Transfer Payment`
+- `Send Money`
+
+phải luôn được hiểu là use case hợp lệ và được xếp `complex`
+
+Lý do:
+- đây là transactional workflow nhiều bước
+- không được nhầm `Send Money` với `Send Confirmation`
+
+Đây là lý do trong `normalization.py` có thêm rule ngoại lệ để:
+- giữ lại `Send Money`
+- nhưng vẫn loại `Send Confirmation`
+
+### 11.5. Phân loại complexity
+
+Hàm chính:
+- `_classify_use_case_complexity()`
+
+Thứ tự ưu tiên:
+1. `complex`
+2. `average`
+3. `simple`
+
+Ví dụ:
+
+#### Simple
+- `Login`
+- `Search Rooms`
+- `View Account Balance`
+- `Check Status`
+
+#### Average
+- `Register`
+- `Approve Transaction`
+- `Confirm Orders`
+- `Update Medical Notes`
+
+#### Complex
+- `Book Room`
+- `Place Order`
+- `Transfer Money`
+- `Borrow Books`
+- `Manage Products`
+
+Điểm hay của classifier hiện tại:
+- không chỉ nhìn domain
+- mà nhìn action chính của use case
+
+## 12. Bước 10: Dữ liệu được đưa vào bộ tính UCP
+
+### File chính
+
+- `backend/app/services/ucp_calculator.py`
+- `backend/app/models/request_models.py`
+
+Sau khi extraction đã normalize xong, backend tạo dữ liệu đầu vào cho module UCP.
+
+Dữ liệu gồm:
+- danh sách actor đã sạch
+- danh sách use case đã sạch
+- `TCF`
+- `ECF`
+- `productivity_factor`
+
+Ý nghĩa:
+- bộ tính UCP chỉ làm việc với dữ liệu đã normalize
+- như vậy kết quả UAW, UUCW, UCP mới đáng tin hơn
+
+## 13. Bước 11: Tính UCP
+
+### File chính
+
+- `backend/app/services/ucp_calculator.py`
+
+### Công thức
+
+#### Actor weight
+
 - `simple = 1`
 - `average = 2`
 - `complex = 3`
 
-### 12.2. Tính trọng số use case
+#### Use case weight
 
-Hàm:
-- `calculate_use_case_weight(complexity)`
-
-Rule:
 - `simple = 5`
 - `average = 10`
 - `complex = 15`
 
-### 12.3. Tính UAW
+#### UAW
 
-Hàm:
-- `calculate_uaw(actors)`
+`UAW = tổng trọng số actor`
 
-Công thức:
+#### UUCW
 
-`UAW = tổng trọng số của tất cả actor`
+`UUCW = tổng trọng số use case`
 
-### 12.4. Tính UUCW
-
-Hàm:
-- `calculate_uucw(use_cases)`
-
-Công thức:
-
-`UUCW = tổng trọng số của tất cả use case`
-
-### 12.5. Tính UUCP
-
-Hàm:
-- `calculate_uucp(uaw, uucw)`
-
-Công thức:
+#### UUCP
 
 `UUCP = UAW + UUCW`
 
-### 12.6. Tính UCP
-
-Hàm:
-- `calculate_ucp(uucp, tcf, ecf)`
-
-Công thức:
+#### UCP
 
 `UCP = UUCP * TCF * ECF`
 
-### 12.7. Tính Effort
-
-Hàm:
-- `calculate_effort_estimation(ucp, productivity_factor)`
-
-Công thức:
+#### Effort
 
 `Effort = UCP * productivity_factor`
 
-### 12.8. Hàm tổng hợp
+## 14. Bước 12: Tính Effort và Schedule
 
-Hàm:
-- `calculate_ucp_metrics(request_data)`
-
-Hàm này gọi toàn bộ các bước trên theo đúng thứ tự và trả ra:
-- `uaw`
-- `uucw`
-- `uucp`
-- `ucp`
-- `effort_estimation`
-
----
-
-## 13. Bước 11: Tính Effort và Schedule
-
-### File liên quan
+### File chính
 
 - `backend/app/services/effort_estimation_service.py`
 - `backend/app/services/schedule_estimation_service.py`
 
-### `effort_estimation_service.py`
+### Effort
 
-Hàm:
-- `estimate_effort(ucp, productivity_factor)`
+File `effort_estimation_service.py` tính:
 
-Kết quả trả ra:
-- `hours`
-- `person_days`
-- `productivity_factor`
+`effort = UCP * productivity_factor`
 
-### `schedule_estimation_service.py`
+### Schedule
 
-Hàm:
-- `estimate_schedule(hours, team_size)`
+File `schedule_estimation_service.py` tính:
 
-Công thức đang dùng:
+`schedule = effort_hours / (team_size * 160)`
 
-`months = effort_hours / (team_size * 160)`
+Ý nghĩa:
+- mặc định 1 người làm 160 giờ mỗi tháng
+- nếu team size lớn hơn thì thời gian dự kiến giảm xuống
 
-Tức là:
-- 1 người làm 160 giờ mỗi tháng
-- nếu nhóm có nhiều người thì thời gian giảm xuống
+## 15. Bước 13: Backend trả kết quả về frontend
 
-Ngoài ra còn tính:
-- `recommended_team_size`
-- `sprint_count`
-
----
-
-## 14. Bước 12: Backend trả response về frontend
-
-### Nếu gọi `/extract`
+### Với `/extract`
 
 Backend trả:
 - `actors`
 - `use_cases`
 - `notes`
 
-### Nếu gọi `/ucp/calculate`
+### Với `/ucp/calculate`
 
 Backend trả:
 - `ucp`
 - `effort`
 - `schedule`
 
-### Nếu gọi `/analyze-and-calculate`
+### Với `/analyze-and-calculate`
 
 Backend trả đầy đủ:
 - `extraction`
@@ -715,16 +583,9 @@ Backend trả đầy đủ:
 - `effort`
 - `schedule`
 
-### File model response
+## 16. Bước 14: Frontend hiển thị kết quả
 
-- `backend/app/models/responses.py`
-- `backend/app/models/response_models.py`
-
----
-
-## 15. Bước 13: Frontend hiển thị kết quả
-
-### File liên quan
+### File chính
 
 - `frontend/src/pages/HomePage.jsx`
 - `frontend/src/components/ActorsTable.jsx`
@@ -734,151 +595,94 @@ Backend trả đầy đủ:
 
 ### Vai trò từng component
 
-#### `ActorsTable.jsx`
+- `ActorsTable.jsx`
+  - hiển thị bảng actor
 
-Hiển thị bảng Actor:
-- tên actor
-- complexity
+- `UseCasesTable.jsx`
+  - hiển thị bảng use case
 
-#### `UseCasesTable.jsx`
+- `ResultCards.jsx`
+  - hiển thị UAW, UUCW, UCP, Effort, Schedule
 
-Hiển thị bảng Use Case:
-- tên use case
-- complexity
+- `ChartPanel.jsx`
+  - hiển thị biểu đồ phân bố độ phức tạp
 
-#### `ResultCards.jsx`
+## 17. Vai trò của test
 
-Hiển thị thẻ kết quả:
-- UAW
-- UUCW
-- UCP
-- Effort
-- Schedule
-
-#### `ChartPanel.jsx`
-
-Hiển thị biểu đồ cột bằng Chart.js:
-- số lượng Actor theo complexity
-- số lượng Use Case theo complexity
-
-### Ý nghĩa
-
-Nhờ tách component như vậy, giao diện:
-- dễ đọc
-- dễ sửa
-- và khi cần demo, có thể chỉ thẳng từng khu vực chức năng
-
----
-
-## 16. Vai trò của test trong project
-
-### File liên quan
+### File chính
 
 - `backend/tests/test_api.py`
 - `backend/tests/test_llm_extractor.py`
 - `backend/tests/test_ucp_calculator.py`
 
-### Ý nghĩa từng file
+### Ý nghĩa
 
-#### `test_api.py`
+- `test_api.py`
+  - chứng minh API hoạt động đúng end-to-end
 
-Chứng minh API backend hoạt động đúng:
-- health
-- extract
-- calculate
-- analyze-and-calculate
+- `test_llm_extractor.py`
+  - chứng minh extraction và normalization hoạt động đúng
+  - có cả test cho các domain như e-commerce, library, hotel, banking
 
-#### `test_llm_extractor.py`
+- `test_ucp_calculator.py`
+  - chứng minh công thức UCP đúng
 
-Chứng minh extraction + normalization chạy đúng:
-- actor được nhận diện đúng
-- use case không bị fragment
-- internal step bị loại bỏ
-- complexity phân loại đúng
+Nếu bị hỏi “làm sao chứng minh hệ thống chạy đúng?”, bạn có thể nói:
 
-#### `test_ucp_calculator.py`
+> Em có test ở 3 tầng: test công thức UCP, test extraction-normalization, và test API end-to-end. Nhờ vậy em kiểm tra được từ logic nhỏ nhất đến toàn bộ luồng backend.
 
-Chứng minh công thức UCP đúng:
-- actor weight
-- use case weight
-- UAW
-- UUCW
-- UUCP
-- UCP
-- effort
-- schedule
+## 18. Câu trả lời nhanh khi bị hỏi “file nào làm gì?”
 
-### Nếu bị hỏi “làm sao chứng minh hệ thống đúng?”
-
-Bạn có thể trả lời:
-
-> Em dùng test ở 3 tầng. Một là test công thức UCP, hai là test extraction-normalization, ba là test API end-to-end. Nhờ vậy em có thể kiểm tra từ logic nhỏ nhất đến toàn bộ luồng backend.
-
----
-
-## 17. Tóm tắt ngắn gọn để thuyết trình
-
-Nếu bạn cần một bản cực ngắn để nói trong 1 phút, có thể dùng như sau:
-
-> Hệ thống của em bắt đầu từ frontend React, nơi người dùng nhập Requirements Text hoặc tải file text lên. Sau đó frontend gọi backend FastAPI qua các API như `/extract` hoặc `/analyze-and-calculate`. Ở backend, dữ liệu đầu vào được đọc và gộp lại, rồi đi vào extraction service để lấy actor và use case. Kết quả extraction chưa dùng ngay mà phải qua lớp normalization để loại `System`, gộp trùng, chuẩn hóa tên use case và phân loại lại complexity. Sau khi có dữ liệu sạch, hệ thống mới đưa vào module `ucp_calculator.py` để tính UAW, UUCW, UUCP và UCP. Từ UCP, backend tiếp tục tính Effort và Schedule, rồi trả toàn bộ kết quả về frontend để hiển thị bằng bảng, card và biểu đồ.
-
----
-
-## 18. Nếu bị hỏi “chức năng này nằm ở đâu?”
-
-Bạn có thể trả lời nhanh theo bảng sau:
-
-- Nhập liệu và bấm nút:
+- nhập liệu và bấm nút:
   - `frontend/src/pages/HomePage.jsx`
 
-- Gọi API:
+- gọi API:
   - `frontend/src/api/client.js`
 
-- Route backend:
+- route backend:
   - `backend/app/api/routes/analysis.py`
 
-- Trích xuất actor/use case:
+- đọc file `.docx/.doc`:
+  - `backend/app/utils/file_reader.py`
+
+- extraction:
   - `backend/app/services/llm_extractor.py`
 
-- Prompt cho LLM:
+- prompt placeholder:
   - `backend/app/services/prompt_templates.py`
 
-- Rule normalize và complexity:
+- normalize và classify:
   - `backend/app/utils/normalization.py`
   - `backend/app/services/mapping_config.py`
 
-- Công thức UCP:
+- tính UCP:
   - `backend/app/services/ucp_calculator.py`
 
-- Effort:
+- tính effort:
   - `backend/app/services/effort_estimation_service.py`
 
-- Schedule:
+- tính schedule:
   - `backend/app/services/schedule_estimation_service.py`
-
-- Test:
-  - `backend/tests/`
-
----
 
 ## 19. Kết luận
 
-Điểm mạnh của project này là kiến trúc được tách thành các lớp rõ ràng:
+Điểm mạnh của project là tách rõ thành các lớp:
 
-- **Frontend**
-  - chỉ nhập liệu và hiển thị
+- frontend
+  - nhập liệu và hiển thị
 
-- **Extraction layer**
-  - lấy actor/use case từ văn bản tự nhiên
+- extraction layer
+  - lấy actor và use case từ text hoặc template
 
-- **Normalization layer**
-  - sửa dữ liệu cho đúng rule UCP
+- normalization layer
+  - làm sạch dữ liệu theo rule UCP
 
-- **Calculation layer**
+- calculation layer
   - tính UCP, Effort, Schedule
 
-Cách tách lớp này giúp project:
+Cách tổ chức này giúp project:
 - dễ đọc
-- dễ test
-- dễ giải thích trong báo cáo
-- và dễ mở rộng nếu sau này nối LLM thật
+- dễ giải thích
+- dễ demo
+- dễ sửa theo từng domain
+- và dễ nâng cấp lên LLM thật trong tương lai

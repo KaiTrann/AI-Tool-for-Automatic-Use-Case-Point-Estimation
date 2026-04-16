@@ -1,8 +1,8 @@
 // Trang chính của hệ thống.
 // File này chứa gần như toàn bộ luồng chạy ở frontend:
-// 1. Nhận Requirements Text / Use Case Description từ người dùng
-// 2. Gọi API backend để trích xuất actor và use case
-// 3. Nhận kết quả trả về
+// 1. Nhận Use Case Document theo template từ người dùng
+// 2. Cho phép dán text hoặc upload file .doc/.docx/.txt
+// 3. Gọi API backend để trích xuất actor và use case
 // 4. Hiển thị bảng và kết quả tính toán UCP
 
 import { useEffect, useState } from "react";
@@ -207,8 +207,11 @@ function HomePage() {
             <div>
               <h2 className="section-title">Dữ Liệu Đầu Vào</h2>
               <p className="section-copy">
-                Nhập Requirements Text hoặc Use Case Description ở dạng plain text.
-                Bạn cũng có thể tải lên file text để backend đọc như nguồn dữ liệu bổ sung.
+                Nhập nội dung <strong>Use Case Document</strong> theo template hoặc tải trực tiếp file
+                `.doc`, `.docx`, `.txt` để backend tự đọc.
+              </p>
+              <p className="section-copy">
+                Nếu bạn upload file theo mẫu Use Case Document, bạn có thể để trống ô nhập text bên dưới.
               </p>
               <p className="section-copy">
                 Trạng thái backend: <strong>{healthStatus}</strong>
@@ -216,26 +219,29 @@ function HomePage() {
             </div>
 
             <label className="field">
-              <span>Requirements Text / Use Case Description</span>
+              <span>Use Case Document Content (Optional)</span>
               <textarea
                 name="text"
                 rows="8"
                 value={formValues.text}
                 onChange={handleInputChange}
-                placeholder="Ví dụ: The Customer can register, log in, browse products, place an order, and make payment. The Administrator can manage products and generate reports."
+                placeholder={"Ví dụ:\nUse Case 1: Register Account\nUse Case ID\nUC-01\nUse Case Name\nRegister Account\nPrimary Actor\nGuest\nDescription\nA guest creates a new account.\nMain Flow\nGuest opens the registration page.\nGuest enters personal information.\nGuest submits the registration form."}
               />
+              <small className="field-hint">
+                Dùng ô này khi bạn muốn dán trực tiếp nội dung template. Nếu đã upload file Use Case Document thì có thể bỏ trống.
+              </small>
             </label>
 
             <label className="field">
-              <span>Plain Text Input File</span>
+              <span>Use Case Document File</span>
               <input
                 type="file"
-                accept=".txt,.md,.doc,.docx,.pdf"
+                accept=".txt,.md,.doc,.docx"
                 onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
               />
               <small className="field-hint">
-                Không bắt buộc tải file. Phiên bản hiện tại đọc file như nguồn text đầu vào.
-                Phù hợp nhất với `.txt`, `.md`, hoặc mock uploaded content có tên `.docx`.
+                Hệ thống ưu tiên đọc file `.docx` theo template Use Case Document.
+                File `.doc` cũ cũng được hỗ trợ theo cơ chế best-effort để lấy text.
               </small>
               {selectedFile ? (
                 <small className="field-hint">Đã chọn file: {selectedFile.name}</small>
@@ -243,7 +249,7 @@ function HomePage() {
             </label>
 
             <p className="section-copy">
-              Gợi ý demo: dán một đoạn requirements paragraph ngắn, bấm <strong>Trích Xuất</strong> để xem Actor và Use Case,
+              Gợi ý demo: upload file Use Case Document theo template, bấm <strong>Trích Xuất</strong> để xem Actor và Use Case,
               sau đó bấm <strong>Tính Toán</strong> để lấy UCP, Effort và Schedule.
             </p>
 

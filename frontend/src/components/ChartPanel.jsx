@@ -18,7 +18,7 @@ function ChartPanel({ extraction }) {
         <div>
           <h2 className="section-title">Phân Bố Complexity</h2>
           <p className="section-copy">
-            Hãy trích xuất dữ liệu trước để hiển thị phân bố Complexity của Actor và Use Case từ Requirements Text.
+            Hãy trích xuất dữ liệu trước để hiển thị phân bố Complexity của Actor và Use Case từ Use Case Document.
           </p>
         </div>
         <div className="empty-chart-state">Biểu đồ sẽ xuất hiện sau khi trích xuất dữ liệu.</div>

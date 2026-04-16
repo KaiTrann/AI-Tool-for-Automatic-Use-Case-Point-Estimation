@@ -40,6 +40,7 @@ class _StrictUseCasePayload(BaseModel):
 
     name: str = Field(..., min_length=1)
     complexity: str
+    description: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -90,7 +91,11 @@ def parse_llm_extraction_json(raw_json: str) -> tuple[list[ActorItem], list[UseC
     )
     use_cases = _deduplicate_use_cases(
         [
-            UseCaseItem(name=item.name, complexity=item.complexity)
+            UseCaseItem(
+                name=item.name,
+                complexity=item.complexity,
+                description=item.description,
+            )
             for item in validated_payload.use_cases
         ]
     )

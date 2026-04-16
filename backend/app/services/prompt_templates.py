@@ -1,10 +1,17 @@
-"""Prompt templates cho bước trích xuất actor và use case từ free-text input."""
+"""Prompt templates cho bước trích xuất actor và use case.
+
+Project hiện hỗ trợ:
+- đoạn văn requirements tự do
+- Use Case Document theo template có các field như:
+  Use Case ID, Use Case Name, Primary Actor, Main Flow, Alternative Flow
+"""
 
 
 EXTRACTION_SYSTEM_PROMPT = """You are an information extraction assistant for a software engineering project that uses Use Case Point (UCP) estimation.
 
 Your task:
-Given plain requirements text, short use case description text, or uploaded text content, extract:
+Given plain requirements text, short use case description text, uploaded text content,
+or a Use Case Document written in a structured template, extract:
 1. actors
 2. use_cases
 
@@ -82,7 +89,16 @@ Examples:
 - Do NOT merge multiple different functions into one use case
 - Do NOT split one logical function into too many small use cases
 - Remove duplicates
-- Do NOT assume the input follows a formal use case specification template
+- If the input follows a Use Case Document template, use fields such as:
+  - Use Case ID
+  - Use Case Name
+  - Primary Actor
+  - Secondary Actor
+  - Description
+  - Main Flow
+  - Alternative Flow
+  - Postconditions
+- In that case, use the template fields to identify actors and use cases more accurately
 
 Important exclusions:
 - Do NOT include internal processing steps as separate use cases

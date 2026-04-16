@@ -5,7 +5,7 @@ function ActorsTable({ actors }) {
       <div>
         <h2 className="section-title">Danh Sách Actor</h2>
         <p className="section-copy">
-          Bảng này hiển thị các Actor mà backend đã trích xuất từ Requirements Text hoặc Use Case Description.
+          Bảng này hiển thị các Actor mà backend đã trích xuất từ Use Case Document hoặc file template được upload.
         </p>
       </div>
 

@@ -51,6 +51,16 @@ BACKGROUND_SUBJECT_ACTION_PATTERN = re.compile(
     r"(?:sends?|notifies?|alerts?|logs?|stores?|saves?|updates?)\b",
     re.IGNORECASE,
 )
+VALID_TRANSACTIONAL_SEND_PHRASES = (
+    "send money",
+    "transfer money",
+    "transfer funds",
+    "transfer payment",
+)
+# Ghi chú:
+# Nhóm phrase này được thêm để tách bạch 2 trường hợp:
+# 1. "Send Money" là business use case hợp lệ của domain banking
+# 2. "Send Confirmation" là internal step phải loại bỏ
 
 
 def normalize_extraction_result(
@@ -105,7 +115,11 @@ def normalize_use_cases(use_cases: Iterable[UseCaseItem], source_text: str = "")
         # - bỏ nếu là internal step
         # - đổi tên về dạng chuẩn
         # - phân loại lại complexity
-        normalized_use_case = _normalize_use_case_item(use_case.name, use_case.complexity)
+        normalized_use_case = _normalize_use_case_item(
+            use_case.name,
+            use_case.complexity,
+            use_case.description,
+        )
         if normalized_use_case is not None:
             normalized_items.append(normalized_use_case)
 
@@ -244,7 +258,11 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
     return None
 
 
-def _normalize_use_case_item(name: str, complexity: str) -> UseCaseItem | None:
+def _normalize_use_case_item(
+    name: str,
+    complexity: str,
+    description: str | None = None,
+) -> UseCaseItem | None:
     """Chuẩn hóa một use case đơn lẻ."""
     cleaned_name = _clean_use_case_text(name)
     lowered_name = cleaned_name.lower()
@@ -274,9 +292,18 @@ def _normalize_use_case_item(name: str, complexity: str) -> UseCaseItem | None:
     # Complexity cuối cùng ưu tiên rule classifier hơn là complexity thô từ extractor.
     inferred_complexity = _classify_use_case_complexity(canonical_name)
     normalized_complexity = _normalize_complexity(complexity)
-    final_complexity = inferred_complexity or normalized_complexity or "average"
+    # Nếu use case đi từ template có description đi kèm,
+    # ưu tiên complexity đã được tính từ Main Flow / Alternative Flow.
+    if description and normalized_complexity:
+        final_complexity = normalized_complexity
+    else:
+        final_complexity = inferred_complexity or normalized_complexity or "average"
 
-    return UseCaseItem(name=canonical_name, complexity=final_complexity)
+    return UseCaseItem(
+        name=canonical_name,
+        complexity=final_complexity,
+        description=description,
+    )
 
 
 def _extract_canonical_use_case_name(raw_name: str) -> str:
@@ -380,17 +407,26 @@ def _classify_use_case_complexity(name: str) -> str:
 def _looks_like_transactional_workflow(lowered_name: str) -> bool:
     """Nhận diện use case dạng giao dịch nhiều bước.
 
-    Các action như book, reserve, borrow, enroll, place order, schedule
+    Các action như book, reserve, borrow, enroll, place order, transfer, checkout
     thường kéo theo nhiều bước xử lý nên được ưu tiên xếp complex.
+
+    Rule này được ưu tiên chạy sớm để:
+    - tránh việc "Transfer Money" bị rơi xuống nhóm average
+    - đảm bảo các transactional workflow luôn được xếp đúng là complex
     """
     transactional_prefixes = (
+        "transfer",
+        "send money",
         "book",
         "reserve",
         "borrow",
         "enroll",
         "place order",
+        "checkout",
         "schedule",
         "manage",
+        "manage account",
+        "manage information",
     )
     return any(
         lowered_name == prefix or lowered_name.startswith(f"{prefix} ")
@@ -404,7 +440,7 @@ def _score_use_case_complexity(lowered_name: str) -> int:
     Rule:
     - view/search/check/display -> 1
     - update/confirm/approve/register/payment -> 2
-    - book/borrow/order/manage/reserve/schedule -> 3
+    - transfer/book/borrow/order/manage/reserve/schedule -> 3
     """
     # Score 3 được ưu tiên vì complex override average/simple.
     if _contains_action_keyword(lowered_name, COMPLEX_USE_CASE_ACTION_KEYWORDS):
@@ -497,11 +533,20 @@ def _looks_like_role_name(lowered_name: str) -> bool:
 
 def _is_internal_step(lowered_name: str) -> bool:
     """Loại bỏ internal step."""
+    # Ngoại lệ cho domain banking:
+    # "Send Money" là business use case hợp lệ, không phải notification nội bộ.
+    if any(
+        lowered_name == phrase or lowered_name.startswith(f"{phrase} ")
+        for phrase in VALID_TRANSACTIONAL_SEND_PHRASES
+    ):
+        return False
+
     # Danh sách loại trừ cố định cho các tác vụ nền.
     if any(exclusion in lowered_name for exclusion in INTERNAL_STEP_EXCLUSIONS):
         return True
 
     # Các từ send/notify/reminder/alert thường là hành vi tự động của hệ thống.
+    # Tuy nhiên rule ngoại lệ phía trên sẽ giữ lại các use case banking hợp lệ.
     if any(keyword in lowered_name for keyword in ("send", "notify", "reminder", "alert")):
         return True
 
@@ -528,6 +573,10 @@ def _is_background_processing_sentence(sentence: str) -> bool:
     """Loại câu mô tả hành vi nền của system/service."""
     lowered_sentence = sentence.lower()
 
+    # Ví dụ bị loại:
+    # - "The system sends confirmation"
+    # - "Email Service notifies user"
+    # Đây là hành vi nền, không phải use case do actor theo đuổi.
     if BACKGROUND_SUBJECT_ACTION_PATTERN.search(sentence):
         return True
 
