@@ -11,7 +11,7 @@ from app.services.llm_extractor import LlmExtractionError, extract_requirements
 from app.services.schedule_estimation_service import estimate_schedule
 from app.services.ucp_calculator import UCPError, calculate_ucp_metrics
 from app.utils.file_reader import read_uploaded_text
-from app.utils.normalization import normalize_extraction_result
+from app.utils.normalization import normalize_actors, normalize_extraction_result, normalize_structured_use_cases
 
 router = APIRouter()
 
@@ -28,11 +28,27 @@ def _build_ucp_core_request(request_model: UcpCalculateRequest) -> tuple[UCPRequ
     # - actor bị trùng
     # - use case bị sai tên
     # - complexity chưa đúng rule
-    normalized_actors, normalized_use_cases = normalize_extraction_result(
-        actors=request_model.actors,
-        use_cases=request_model.use_cases,
-        source_text="",
-    )
+    # Actor luôn được normalize lại để đảm bảo:
+    # - bỏ trùng
+    # - chuẩn hóa tên
+    # - complexity đúng theo chuẩn UCP
+    normalized_actors = normalize_actors(request_model.actors, source_text="")
+
+    # Nếu payload đến từ structured use case document,
+    # description thường đã có "Transaction count: ...".
+    # Khi đó cần giữ nguyên tên use case chính thức từ tài liệu,
+    # không chạy lại normalize kiểu free-text để tránh mất use case hợp lệ.
+    if _looks_like_structured_use_case_payload(request_model.use_cases):
+        # Payload đến từ SRS / Use Case Document đã có transaction count,
+        # nên phải giữ tên use case chính thức từ tài liệu.
+        normalized_use_cases = normalize_structured_use_cases(request_model.use_cases)
+    else:
+        # Payload đến từ free-text thì đi qua normalization chung.
+        _, normalized_use_cases = normalize_extraction_result(
+            actors=[],
+            use_cases=request_model.use_cases,
+            source_text="",
+        )
 
     # Chuyển về model UCPRequest của lớp tính toán core.
     # Lớp này chỉ quan tâm đến danh sách actor/use case đã sạch.
@@ -56,6 +72,14 @@ def _build_ucp_core_request(request_model: UcpCalculateRequest) -> tuple[UCPRequ
     return core_request, len(normalized_actors), len(normalized_use_cases)
 
 
+def _looks_like_structured_use_case_payload(use_cases: list) -> bool:
+    """Kiểm tra payload use case có đến từ structured document hay không."""
+    return any(
+        getattr(use_case, "description", None) and "Transaction count:" in use_case.description
+        for use_case in use_cases
+    )
+
+
 @router.post("/extract", response_model=ExtractionResponse)
 async def extract(
     text: str = Form(default=""),
@@ -65,6 +89,7 @@ async def extract(
     """Nhận Requirements Text hoặc nội dung text từ file upload rồi trả về actor/use case."""
     # File upload trong prototype này được đọc như một nguồn text bổ sung.
     # Nếu không có file, hàm sẽ trả về None cho file_name và file_text.
+    # Đọc file upload nếu người dùng gửi kèm.
     file_name, file_text = await read_uploaded_text(uploaded_file)
     try:
         # Gộp dữ liệu form thành model để Pydantic tự validate đầu vào.
@@ -75,6 +100,10 @@ async def extract(
             llm_mode=llm_mode,
         )
         # Toàn bộ logic extraction nằm trong service để route luôn mỏng và dễ đọc.
+        # Service extraction sẽ tự quyết định:
+        # - parse SRS/use case document
+        # hoặc
+        # - extract từ free-text
         return extract_requirements(request_model)
     except ValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -87,12 +116,15 @@ def calculate(request_model: UcpCalculateRequest) -> UcpCalculationResponse:
     """Tính UAW, UUCW, UCP, effort và schedule từ dữ liệu actor/use case đã được normalize."""
     try:
         # Bước 1: normalize lại dữ liệu và chuyển sang model core.
+        # Chuẩn hóa dữ liệu đầu vào trước rồi mới chuyển vào bộ tính UCP lõi.
         core_request, actor_count, use_case_count = _build_ucp_core_request(request_model)
 
         # Bước 2: tính các giá trị UCP cốt lõi.
+        # Tính UAW, UUCW, UUCP, UCP.
         core_result = calculate_ucp_metrics(core_request)
 
         # Bước 3: từ UCP suy ra Effort và Schedule.
+        # Tính effort và schedule từ UCP sau khi đã có kết quả lõi.
         effort = estimate_effort(
             ucp=core_result.ucp,
             productivity_factor=request_model.productivity_factor,
@@ -130,6 +162,8 @@ async def analyze_and_calculate(
     uploaded_file: UploadFile | None = File(default=None),
 ) -> AnalysisAndCalculationResponse:
     """API gộp: vừa trích xuất từ free-text input vừa tính toán kết quả UCP."""
+    # Endpoint tổng hợp:
+    # nhận text/file, trích xuất, rồi tính UCP trong cùng một request.
     file_name, file_text = await read_uploaded_text(uploaded_file)
     try:
         # Tạo model đầu vào cho luồng "extract rồi calculate".
@@ -152,6 +186,7 @@ async def analyze_and_calculate(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     # Giai đoạn 2: chuyển kết quả extraction thành payload cho bộ tính UCP.
+    # Dùng chính kết quả extraction đã chuẩn hóa để tạo payload tính UCP.
     calculation_request = UcpCalculateRequest(
         actors=extraction.actors,
         use_cases=extraction.use_cases,
@@ -162,6 +197,7 @@ async def analyze_and_calculate(
     )
     try:
         # Giai đoạn 3: tính toán toàn bộ chỉ số cuối cùng.
+        # Chuẩn hóa lần cuối trước khi tính để chắc chắn pipeline luôn dùng dữ liệu sạch.
         core_request, actor_count, use_case_count = _build_ucp_core_request(calculation_request)
         core_result = calculate_ucp_metrics(core_request)
         effort = estimate_effort(

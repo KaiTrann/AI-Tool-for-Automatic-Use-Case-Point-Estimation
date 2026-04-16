@@ -497,7 +497,7 @@ def test_analyze_and_calculate_returns_expected_education_metrics() -> None:
 
 
 def test_analyze_and_calculate_returns_expected_hotel_template_metrics() -> None:
-    """Hotel Use Case Document đầy đủ phải ra đúng metrics sau khi Search Rooms được xếp simple."""
+    """Hotel Use Case Document đầy đủ phải ra đúng metrics theo rule transaction-count chuẩn."""
     response = client.post(
         "/analyze-and-calculate",
         data={
@@ -514,11 +514,11 @@ def test_analyze_and_calculate_returns_expected_hotel_template_metrics() -> None
 
     payload = response.json()
     assert payload["ucp"]["uaw"] == 10.0
-    assert payload["ucp"]["uucw"] == 65.0
-    assert payload["ucp"]["uucp"] == 75.0
-    assert payload["ucp"]["ucp"] == 75.0
-    assert payload["effort"]["hours"] == 1500.0
-    assert payload["schedule"]["months"] == 3.13
+    assert payload["ucp"]["uucw"] == 60.0
+    assert payload["ucp"]["uucp"] == 70.0
+    assert payload["ucp"]["ucp"] == 70.0
+    assert payload["effort"]["hours"] == 1400.0
+    assert payload["schedule"]["months"] == 2.92
 
 
 def test_analyze_and_calculate_returns_expected_banking_metrics() -> None:

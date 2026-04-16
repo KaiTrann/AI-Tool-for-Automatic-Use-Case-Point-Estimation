@@ -16,13 +16,21 @@ from __future__ import annotations
 import json
 import re
 
-from app.models.requests import ExtractRequest
+from app.models.requests import ActorItem, ExtractRequest, UseCaseItem
 from app.models.responses import ExtractionResponse
+from app.services.actor_classifier import collect_classified_actors
 from app.services.mapping_config import ACTION_VERB_PATTERNS, VERB_CANONICAL_MAP
 from app.services.prompt_templates import build_extraction_prompt
+from app.services.use_case_classifier import classify_use_case_document
 from app.utils.llm_json_parser import parse_llm_extraction_json
-from app.utils.normalization import normalize_extraction_result
+from app.utils.normalization import (
+    normalize_extraction_result,
+    normalize_structured_use_cases,
+    normalize_use_case_documents,
+    normalize_actors,
+)
 from app.utils.parser import combine_text_sources, normalize_name, split_sentences
+from app.utils.use_case_document_parser import looks_like_use_case_document, parse_use_case_documents
 
 ACTION_SENTENCE_PATTERN = re.compile(
     r"\b(can|may|must|should|will|allows|lets)\b",
@@ -56,10 +64,25 @@ def extract_requirements(request_model: ExtractRequest) -> ExtractionResponse:
     # Cách làm này giúp các mode extraction đều xử lý trên cùng một nguồn dữ liệu.
     combined_text = combine_text_sources(request_model.source_text, request_model.file_text)
 
+    # Ưu tiên cao nhất:
+    # nếu tài liệu giống Use Case Specification có cấu trúc,
+    # dùng parser + normalization + classifier theo chuẩn UCP.
+    # Nếu parser nhận ra đây là Use Case Document / SRS có cấu trúc,
+    # hệ thống sẽ ưu tiên đi theo luồng "parse tài liệu chuẩn"
+    # thay vì đoán từ câu văn tự do.
+    structured_response = _extract_from_use_case_documents(
+        combined_text=combined_text,
+        mode=request_model.llm_mode,
+        file_name=request_model.file_name,
+    )
+    if structured_response is not None:
+        return structured_response
+
     # Bước 2:
     # Tùy theo LLM Mode mà chọn cách lấy JSON extraction.
     # - mock: chạy extractor rule-based nội bộ
     # - placeholder: mô phỏng chỗ sau này sẽ gọi LLM API thật
+    # Nếu không phải tài liệu có cấu trúc, backend mới dùng luồng free-text extraction.
     raw_json = _generate_extraction_json(combined_text, request_model.llm_mode)
 
     try:
@@ -95,8 +118,12 @@ def _generate_extraction_json(text: str, mode: str) -> str:
     """Chọn cách trích xuất dựa trên chế độ đang dùng."""
     # Đây chính là nơi LLM Mode có tác dụng:
     # nó quyết định backend sẽ dùng nhánh extractor nào.
+    # Mock mode:
+    # dùng rule nội bộ để luôn có kết quả ổn định khi demo.
     if mode == "mock":
         return _build_mock_extraction_json(text)
+    # Placeholder mode:
+    # hiện chưa gọi API thật, nhưng vẫn giữ sẵn vị trí tích hợp sau này.
     if mode == "placeholder":
         return _call_placeholder_llm_api(text)
     raise LlmExtractionError("Chế độ trích xuất không hợp lệ. Hãy dùng 'mock' hoặc 'placeholder'.")
@@ -112,6 +139,10 @@ def _build_mock_extraction_json(text: str) -> str:
 
     # Mock mode hoàn toàn không phụ thuộc Internet hoặc API key.
     # Phù hợp để demo nhanh, ổn định và dễ kiểm thử.
+    # Luồng free-text mock:
+    # 1. tách actor thô
+    # 2. tách use case thô
+    # 3. đóng gói thành JSON để parser/normalization xử lý tiếp
     actors = _extract_raw_actors(text)
     use_cases = _extract_raw_use_cases(text)
     return json.dumps({"actors": actors, "use_cases": use_cases})
@@ -127,6 +158,8 @@ def _call_placeholder_llm_api(text: str) -> str:
     # Tuy nhiên mình vẫn build prompt ở đây để:
     # - giữ đúng kiến trúc sẽ dùng khi nâng cấp thật
     # - giúp dễ chứng minh trong báo cáo rằng hệ thống đã có sẵn chỗ nối LLM
+    # Dòng này chỉ build prompt để mô phỏng đúng kiến trúc tích hợp LLM.
+    # Vì project đang ưu tiên demo ổn định nên chưa gửi request ra model thật.
     _ = build_extraction_prompt(text)
     return _build_mock_extraction_json(text)
 
@@ -198,9 +231,11 @@ def _split_action_sentence(sentence: str) -> list[str]:
         r"^(?:The |A |An )?[A-Za-z\s-]+ will ",
     ]
 
+    # Lần lượt gỡ các phần mở đầu để chỉ giữ lại cụm hành động chính.
     for pattern in cleanup_patterns:
         action_text = re.sub(pattern, "", action_text, flags=re.IGNORECASE)
 
+    # Tách nhiều hành động trong cùng một câu.
     return [segment.strip() for segment in re.split(r",| and | or ", action_text) if segment.strip()]
 
 
@@ -292,16 +327,72 @@ def _build_notes(mode: str, file_name: str | None, source_text: str) -> list[str
     return notes
 
 
+def _extract_from_use_case_documents(
+    combined_text: str,
+    mode: str,
+    file_name: str | None,
+) -> ExtractionResponse | None:
+    """Ưu tiên xử lý tài liệu Use Case Specification có cấu trúc."""
+    if not looks_like_use_case_document(combined_text):
+        return None
+
+    # Bước 1: parser tách tài liệu thành từng use case document chuẩn hóa sơ bộ.
+    parsed_documents = parse_use_case_documents(combined_text)
+
+    # Bước 2: normalization sửa field, tên actor, tên use case và format step.
+    normalized_documents = normalize_use_case_documents(parsed_documents)
+    if not normalized_documents:
+        # Nếu có dấu hiệu giống template nhưng parse không ra block nào hợp lệ,
+        # fallback về chế độ trích xuất text thường thay vì làm hỏng toàn bộ pipeline.
+        return None
+
+    # Bước 3: gom actor từ toàn bộ document và phân loại theo chuẩn UCP.
+    raw_actors = [
+        ActorItem(name=actor_name, complexity=actor_complexity)
+        for actor_name, actor_complexity in collect_classified_actors(normalized_documents)
+    ]
+
+    raw_use_cases: list[UseCaseItem] = []
+    for use_case_document in normalized_documents:
+        # Bước 4: với tài liệu có cấu trúc, độ phức tạp use case
+        # ưu tiên tính bằng transaction count trong Main Success Scenario.
+        complexity, transaction_count = classify_use_case_document(use_case_document)
+        description_parts = [use_case_document.description or ""]
+        if transaction_count > 0:
+            description_parts.append(f"Transaction count: {transaction_count}")
+
+        raw_use_cases.append(
+            UseCaseItem(
+                name=use_case_document.use_case_name,
+                complexity=complexity,
+                description="\n".join(part for part in description_parts if part) or None,
+            )
+        )
+
+    # Chuẩn hóa thêm một lần nữa để:
+    # - gộp trùng
+    # - đồng nhất tên actor/use case
+    # - giữ complexity đã phân loại từ document
+    # Structured document dùng schema và field chuẩn,
+    # nên chỉ normalize actor mạnh, còn use case thì giữ tên chính thức từ tài liệu.
+    # Bước 5: làm sạch lần cuối trước khi trả về API.
+    actors = normalize_actors(raw_actors, source_text="")
+    use_cases = normalize_structured_use_cases(raw_use_cases)
+
+    notes = _build_notes(mode, file_name, combined_text)
+    notes.append(
+        f"Đầu vào có cấu trúc được parse về schema chuẩn nội bộ với {len(normalized_documents)} use case."
+    )
+    notes.append(
+        "Complexity được ưu tiên xác định từ actor interaction type và transaction count của Main Success Scenario."
+    )
+
+    return ExtractionResponse(actors=actors, use_cases=use_cases, notes=notes)
+
+
 def _looks_like_use_case_template(text: str) -> bool:
     """Kiểm tra text có giống Use Case Document theo template hay không."""
-    lowered_text = text.lower()
-    required_markers = (
-        "use case id",
-        "use case name",
-        "primary actor",
-        "main flow",
-    )
-    return all(marker in lowered_text for marker in required_markers)
+    return looks_like_use_case_document(text)
 
 
 def _extract_template_payload(text: str) -> dict[str, list[dict[str, str]]]:

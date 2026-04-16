@@ -23,6 +23,32 @@ class UseCaseItem(BaseModel):
     description: str | None = Field(default=None)
 
 
+class NormalizedUseCaseDocument(BaseModel):
+    """Schema chuẩn nội bộ cho một Use Case Specification sau khi parse và normalize.
+
+    Toàn bộ tài liệu use case có cấu trúc sẽ được đưa về đúng schema này trước khi:
+    - phân loại actor
+    - đếm transaction
+    - tính complexity của use case
+    - tính UCP
+    """
+
+    use_case_id: str | None = Field(default=None)
+    use_case_name: str = Field(..., min_length=1)
+    primary_actor: str | None = Field(default=None)
+    secondary_actors: list[str] = Field(default_factory=list)
+    description: str | None = Field(default=None)
+    trigger: str | None = Field(default=None)
+    preconditions: str | None = Field(default=None)
+    postconditions: str | None = Field(default=None)
+    main_success_scenario: list[str] = Field(default_factory=list)
+    alternative_flows: list[str] = Field(default_factory=list)
+    exception_flows: list[str] = Field(default_factory=list)
+    priority: str | None = Field(default=None)
+    business_rules: str | None = Field(default=None)
+    notes: str | None = Field(default=None)
+
+
 class ExtractRequest(BaseModel):
     """Model request sau khi đã gộp text nhập tay và text từ file."""
 

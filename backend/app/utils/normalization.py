@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-from app.models.requests import ActorItem, UseCaseItem
+from app.models.requests import ActorItem, NormalizedUseCaseDocument, UseCaseItem
 from app.services.mapping_config import (
     ACTION_VERB_PATTERNS,
     ACTOR_NAME_NORMALIZATION,
@@ -74,6 +74,105 @@ def normalize_extraction_result(
     normalized_actors = normalize_actors(actors, source_text)
     normalized_use_cases = normalize_use_cases(use_cases, source_text)
     return normalized_actors, normalized_use_cases
+
+
+def normalize_use_case_documents(
+    use_case_documents: Iterable[NormalizedUseCaseDocument],
+) -> list[NormalizedUseCaseDocument]:
+    """Chuẩn hóa danh sách Use Case Specification về schema chuẩn nội bộ."""
+    normalized_documents: list[NormalizedUseCaseDocument] = []
+
+    for use_case_document in use_case_documents:
+        normalized_document = normalize_use_case_document(use_case_document)
+        if normalized_document is not None:
+            normalized_documents.append(normalized_document)
+
+    return normalized_documents
+
+
+def normalize_structured_use_cases(
+    use_cases: Iterable[UseCaseItem],
+) -> list[UseCaseItem]:
+    """Chuẩn hóa nhẹ cho use case đến từ tài liệu có cấu trúc.
+
+    Với Use Case Specification chuẩn:
+    - tên use case đã đến từ field chính thức trong tài liệu
+    - không nên áp các rule mạnh của free-text như bỏ notify/send hay rút gọn tên
+
+    Vì vậy hàm này chỉ:
+    - làm sạch tên
+    - chuẩn hóa complexity
+    - loại trùng
+    """
+    normalized_items: list[UseCaseItem] = []
+
+    for use_case in use_cases:
+        cleaned_name = normalize_name(use_case.name).strip(" .,:;")
+        if not cleaned_name:
+            continue
+
+        # Một vài tên trong tài liệu vẫn được rút gọn nhẹ để giữ tính nhất quán khi demo.
+        if cleaned_name.lower() in {"register account", "create account"}:
+            cleaned_name = "Register"
+
+        normalized_items.append(
+            UseCaseItem(
+                name=_title_case_name(cleaned_name),
+                complexity=_normalize_complexity(use_case.complexity) or "average",
+                description=use_case.description,
+            )
+        )
+
+    return _deduplicate_use_cases(normalized_items)
+
+
+def normalize_use_case_document(
+    use_case_document: NormalizedUseCaseDocument,
+) -> NormalizedUseCaseDocument | None:
+    """Chuẩn hóa một use case document đơn lẻ.
+
+    Mục tiêu:
+    - chuẩn hóa tên field
+    - làm sạch actor
+    - làm sạch tên use case
+    - làm sạch danh sách bước
+    - tách primary / secondary actor nếu source bị gộp chung
+    """
+    normalized_name = _standardize_use_case_name(use_case_document.use_case_name)
+    if not normalized_name:
+        return None
+
+    primary_actor = _standardize_actor_label(use_case_document.primary_actor)
+    secondary_actors = [_standardize_actor_label(actor_name) for actor_name in use_case_document.secondary_actors]
+    secondary_actors = [actor_name for actor_name in secondary_actors if actor_name]
+
+    # Nếu primary actor bị gộp nhiều actor trong một field,
+    # lấy actor đầu là primary, các actor còn lại đẩy sang secondary.
+    if primary_actor and any(separator in primary_actor.lower() for separator in (",", " and ", ";", " & ")):
+        actor_candidates = _split_actor_names_from_single_field(primary_actor)
+        if actor_candidates:
+            primary_actor = actor_candidates[0]
+            secondary_actors = actor_candidates[1:] + secondary_actors
+
+    if primary_actor is None and secondary_actors:
+        primary_actor = secondary_actors.pop(0)
+
+    return NormalizedUseCaseDocument(
+        use_case_id=_clean_optional_multiline_text(use_case_document.use_case_id),
+        use_case_name=normalized_name,
+        primary_actor=primary_actor,
+        secondary_actors=_deduplicate_names(secondary_actors),
+        description=_clean_optional_multiline_text(use_case_document.description),
+        trigger=_clean_optional_multiline_text(use_case_document.trigger),
+        preconditions=_clean_optional_multiline_text(use_case_document.preconditions),
+        postconditions=_clean_optional_multiline_text(use_case_document.postconditions),
+        main_success_scenario=_clean_step_list(use_case_document.main_success_scenario),
+        alternative_flows=_clean_step_list(use_case_document.alternative_flows),
+        exception_flows=_clean_step_list(use_case_document.exception_flows),
+        priority=_clean_optional_multiline_text(use_case_document.priority),
+        business_rules=_clean_optional_multiline_text(use_case_document.business_rules),
+        notes=_clean_optional_multiline_text(use_case_document.notes),
+    )
 
 
 def normalize_actors(actors: Iterable[ActorItem], source_text: str = "") -> list[ActorItem]:
@@ -230,7 +329,10 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
         or lowered_name.startswith(f"{ignored} ")
         or lowered_name.endswith(f" {ignored}")
         for ignored in IGNORE_AS_ACTOR
-    ) and not _is_external_actor_name(lowered_name):
+    ) and not (
+        _is_external_actor_name(lowered_name)
+        or _looks_like_interface_actor_name(lowered_name)
+    ):
         return None
 
     if lowered_name in ACTOR_NAME_NORMALIZATION:
@@ -245,6 +347,10 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
 
     if _is_external_actor_name(lowered_name):
         return ActorItem(name=_title_case_name(cleaned_name), complexity="simple")
+
+    # Actor kiểu database/file/protocol/text interface theo chuẩn UCP sẽ là average.
+    if _looks_like_interface_actor_name(lowered_name):
+        return ActorItem(name=_title_case_name(cleaned_name), complexity="average")
 
     # Nếu chưa match rule mạnh, thử giữ complexity gốc nếu nó hợp lệ.
     normalized_complexity = _normalize_complexity(complexity)
@@ -519,6 +625,16 @@ def _is_external_actor_name(lowered_name: str) -> bool:
     return any(keyword in lowered_name for keyword in fallback_keywords)
 
 
+def _looks_like_interface_actor_name(lowered_name: str) -> bool:
+    """Nhận diện actor kiểu protocol/file/database/text interface.
+
+    Các actor này theo chuẩn UCP thường được xếp average,
+    nên không được loại bỏ chỉ vì tên có chứa "database" hay "file".
+    """
+    interface_keywords = ("database", "db", "file", "protocol", "text", "csv", "excel")
+    return any(keyword in lowered_name for keyword in interface_keywords)
+
+
 def _looks_like_role_name(lowered_name: str) -> bool:
     """Fallback cho role chưa có trong danh sách keyword."""
     words = lowered_name.split()
@@ -604,9 +720,109 @@ def _trim_leading_filler_words(text: str) -> str:
     return " ".join(words)
 
 
+def _standardize_use_case_name(name: str | None) -> str:
+    """Chuẩn hóa tên use case về dạng dễ đọc và nhất quán."""
+    if not name:
+        return ""
+
+    cleaned_name = normalize_name(name)
+    cleaned_name = cleaned_name.strip(" .,:;")
+
+    if not cleaned_name:
+        return ""
+
+    return _title_case_name(cleaned_name)
+
+
+def _standardize_actor_label(actor_name: str | None) -> str | None:
+    """Chuẩn hóa tên actor để dùng ổn định trong parser/classifier."""
+    if not actor_name:
+        return None
+
+    cleaned_name = normalize_name(actor_name).strip(" .,:;")
+    if not cleaned_name:
+        return None
+
+    if cleaned_name.lower() == "admin":
+        return "Administrator"
+
+    words: list[str] = []
+    for word in cleaned_name.split():
+        lowered_word = word.lower()
+        if lowered_word == "api":
+            words.append("API")
+        elif lowered_word == "db":
+            words.append("DB")
+        else:
+            words.append(word.capitalize())
+
+    return " ".join(words)
+
+
+def _clean_optional_multiline_text(value: str | None) -> str | None:
+    """Làm sạch field text nhiều dòng."""
+    if not value:
+        return None
+
+    cleaned_lines = [normalize_name(line) for line in value.splitlines() if normalize_name(line)]
+    if not cleaned_lines:
+        return None
+
+    return "\n".join(cleaned_lines)
+
+
+def _clean_step_list(steps: list[str]) -> list[str]:
+    """Làm sạch danh sách bước trong flow."""
+    cleaned_steps: list[str] = []
+
+    for step in steps:
+        cleaned_step = normalize_name(step)
+        cleaned_step = re.sub(r"^\s*(?:\d+[\.\)]|[A-Za-z][\.\)]|[-*•])\s*", "", cleaned_step)
+        cleaned_step = cleaned_step.strip(" .:-")
+        if not cleaned_step:
+            continue
+        cleaned_steps.append(cleaned_step)
+
+    return cleaned_steps
+
+
+def _split_actor_names_from_single_field(value: str) -> list[str]:
+    """Tách một field actor bị gộp nhiều actor."""
+    parts = re.split(r",| and | & |;", value, flags=re.IGNORECASE)
+    return [
+        standardized_name
+        for part in parts
+        if (standardized_name := _standardize_actor_label(part)) is not None
+    ]
+
+
+def _deduplicate_names(values: list[str]) -> list[str]:
+    """Loại phần tử trùng nhưng vẫn giữ thứ tự ban đầu."""
+    seen: set[str] = set()
+    unique_values: list[str] = []
+
+    for value in values:
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_values.append(value)
+
+    return unique_values
+
+
 def _title_case_name(name: str) -> str:
     """Title Case đơn giản cho tên actor/use case."""
-    return " ".join(word.capitalize() for word in normalize_name(name).split())
+    formatted_words: list[str] = []
+
+    for word in normalize_name(name).split():
+        lowered_word = word.lower()
+        if lowered_word in {"api", "db", "erp", "crm", "sms"}:
+            formatted_words.append(lowered_word.upper())
+        else:
+            formatted_words.append(word.capitalize())
+
+    return " ".join(formatted_words)
 
 
 def _contains_keyword(text: str, keywords: tuple[str, ...]) -> bool:

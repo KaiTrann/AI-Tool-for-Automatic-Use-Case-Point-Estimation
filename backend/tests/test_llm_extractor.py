@@ -540,7 +540,7 @@ def test_extract_requirements_full_hotel_template_uses_updated_complexity() -> N
         "Search Rooms": "simple",
         "Book Room": "complex",
         "Cancel Reservation": "average",
-        "Manage Room Information": "complex",
+        "Manage Room Information": "average",
         "Generate Monthly Report": "average",
     }
 

@@ -1,79 +1,119 @@
 # AI Tool for Automatic Use Case Point Estimation
 
-Đây là một prototype học thuật cho đồ án môn học về **Use Case Point (UCP)**.
-
-Hệ thống nhận:
-- `Requirements Text`
-- `Use Case Description`
-- hoặc nội dung text từ file upload
-
-Sau đó hệ thống:
-- trích xuất `Actor`
-- trích xuất `Use Case`
-- chuẩn hóa dữ liệu extraction
+Đây là prototype học thuật dùng để:
+- nhận `Requirements Text`
+- nhận `Use Case Description`
+- hoặc nhận file `Use Case Document / SRS` upload lên
+- trích xuất `Actor`, `Use Case`
 - tính `UAW`, `UUCW`, `UUCP`, `UCP`, `Effort`, `Schedule`
 
-Project dùng:
-- **Backend**: FastAPI + Python
-- **Frontend**: React + Vite
-- **Chart**: Chart.js
+Project phù hợp cho demo sinh viên vì:
+- code đơn giản, tách module rõ
+- không dùng database
+- không dùng authentication phức tạp
+- có thể demo bằng text thường hoặc file `.docx`
 
-## 1. Mục tiêu của README này
+## 1. Công nghệ sử dụng
 
-README này được viết theo hướng:
-- người khác cầm project trên **máy lạ / máy mới** vẫn chạy được
-- tránh xung đột:
-  - Python global
-  - pip global
-  - virtual environment cũ
-  - Node/npm cũ
-  - chạy sai thư mục
+- Backend: `FastAPI` + `Python`
+- Frontend: `React` + `Vite`
+- Visualization: `Chart.js`
+- Test backend: `pytest`
 
-Nếu bạn chỉ cần làm đúng một nguyên tắc quan trọng nhất, hãy nhớ:
+## 2. Chuẩn UCP đang áp dụng trong project
 
-> **Không cài package Python bằng pip global cho project này. Luôn dùng `backend/.venv` và luôn dùng `python -m pip`.**
+### Actor complexity theo chuẩn UCP
 
----
+- `simple = 1`
+- `average = 2`
+- `complex = 3`
 
-## 2. Cấu trúc project
+Ý nghĩa:
+- `simple actor`: hệ thống ngoài có API rõ ràng
+- `average actor`: giao tiếp qua file / database / protocol / text interface
+- `complex actor`: người dùng thao tác qua GUI
+
+### Use case complexity theo chuẩn UCP
+
+- `simple = <= 3 transactions`
+- `average = 4–7 transactions`
+- `complex = > 7 transactions`
+
+### Use case weight trong UUCW
+
+- `simple = 5`
+- `average = 10`
+- `complex = 15`
+
+### Công thức đang dùng
+
+- `UAW = tổng trọng số actor`
+- `UUCW = tổng trọng số use case`
+- `UUCP = UAW + UUCW`
+- `UCP = UUCP * TCF * ECF`
+- `Effort = UCP * productivity_factor`
+- `Schedule (tháng) = effort_hours / (team_size * 160)`
+
+## 3. Project hiện hỗ trợ input gì
+
+Hệ thống hiện hỗ trợ 2 kiểu input:
+
+### Kiểu 1: văn bản tự do
+
+Ví dụ:
+- requirements text
+- mô tả use case ngắn
+- đoạn mô tả nghiệp vụ dạng paragraph
+
+### Kiểu 2: Use Case Document / SRS có cấu trúc
+
+Hệ thống hiện đã hỗ trợ đọc nội dung từ:
+- `.txt`
+- `.md`
+- `.docx`
+- `.doc` theo kiểu best-effort
+
+Nếu tài liệu có các mục như:
+- `Use Case ID`
+- `Use Case Name`
+- `Actors`
+- `Description`
+- `Pre-conditions`
+- `Post-conditions`
+- `Main Flow`
+- `Alternative Flow`
+
+thì backend sẽ ưu tiên parse theo cấu trúc tài liệu, không đoán kiểu free-text nữa.
+
+## 4. Cấu trúc thư mục chính
 
 ```text
 AI Tool for Automatic UCPE/
-|-- backend/
-|   |-- app/
-|   |-- tests/
-|   `-- requirements.txt
-|-- frontend/
-|   |-- src/
-|   |-- package.json
-|   `-- vite.config.js
-|-- PROJECT_STRUCTURE_VI.md
-|-- THUYET_MINH_CODE_VI.md
-`-- README.md
+├─ backend/
+├─ frontend/
+├─ README.md
+├─ PROJECT_STRUCTURE_VI.md
+└─ THUYET_MINH_CODE_VI.md
 ```
 
-Tài liệu thêm:
-- [PROJECT_STRUCTURE_VI.md](./PROJECT_STRUCTURE_VI.md): bản đồ từng folder và file
-- [THUYET_MINH_CODE_VI.md](./THUYET_MINH_CODE_VI.md): thuyết minh luồng chạy từ input đến UCP
+Tài liệu đi kèm:
+- [PROJECT_STRUCTURE_VI.md](./PROJECT_STRUCTURE_VI.md): giải thích từng folder, từng file chính
+- [THUYET_MINH_CODE_VI.md](./THUYET_MINH_CODE_VI.md): giải thích luồng chạy từ input đến UCP
 
----
+## 5. Yêu cầu môi trường trên máy mới
 
-## 3. Yêu cầu trên máy mới
+Cần cài:
 
-### Bắt buộc
+1. `Python 3.12` hoặc `Python 3.13`
+2. `Node.js 18+`
+3. `npm`
 
-1. **Python 3.12 hoặc 3.13**
-2. **Node.js 18+**
-3. **npm** đi kèm Node.js
+Khuyến khích cài thêm:
 
-### Khuyến nghị
+4. `Git`
+5. `VS Code`
 
-4. **Git**
-5. **VS Code**
-
-### Cách kiểm tra
-
-Mở PowerShell hoặc Command Prompt và chạy:
+Kiểm tra nhanh:
 
 ```powershell
 python --version
@@ -81,35 +121,19 @@ node --version
 npm --version
 ```
 
-Kỳ vọng:
-- Python có version `3.12.x` hoặc `3.13.x`
-- Node có version `18+`
+## 6. Nguyên tắc tránh xung đột môi trường
 
-Nếu máy có nhiều Python:
+### Backend Python
 
-```powershell
-py --version
-py -0
-```
-
----
-
-## 4. Quy tắc tránh xung đột môi trường
-
-### Với Python
-
-Project này chỉ nên cài package vào:
+Luôn dùng virtual environment riêng của project:
 
 ```text
 backend/.venv
 ```
 
-Không nên:
-- `pip install fastapi` ở global
-- `pip install -r requirements.txt` ở thư mục ngoài project
-- dùng `.venv` ở root project khác
+Không nên cài package bằng `pip` global.
 
-Luôn dùng:
+Luôn ưu tiên:
 
 ```powershell
 python -m pip install ...
@@ -121,165 +145,56 @@ thay vì:
 pip install ...
 ```
 
-Lý do:
-- `pip` có thể trỏ nhầm sang Python khác
-- `python -m pip` chắc chắn đi cùng interpreter đang dùng
+### Frontend Node
 
-### Với Node.js
-
-Frontend chỉ cài package trong:
+Frontend chỉ nên cài package trong:
 
 ```text
 frontend/node_modules
 ```
 
-Không copy `node_modules` từ project khác vào.
+Không copy `node_modules` từ project khác sang.
 
-Nếu frontend lỗi package:
-- xóa `frontend/node_modules`
-- xóa `frontend/package-lock.json` nếu thật sự cần làm sạch sâu
-- rồi chạy lại `npm install`
+## 7. Cài backend từ đầu
 
----
-
-## 5. Cài backend từ đầu trên máy mới
-
-### Bước 1: vào đúng thư mục backend
+Mở PowerShell:
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
-```
-
-Nếu bạn clone hoặc copy project sang chỗ khác thì chỉ cần thay đường dẫn cho đúng.
-
-### Bước 2: tạo virtual environment riêng cho backend
-
-```powershell
 python -m venv .venv
-```
-
-Nếu máy có nhiều bản Python và muốn chỉ rõ:
-
-```powershell
-py -3.13 -m venv .venv
-```
-
-### Bước 3: activate virtual environment
-
-PowerShell:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
-```
-
-Command Prompt:
-
-```cmd
-.venv\Scripts\activate.bat
-```
-
-Sau khi activate, terminal thường sẽ hiện thêm:
-
-```text
-(.venv)
-```
-
-ở đầu dòng lệnh.
-
-### Bước 4: nâng pip
-
-```powershell
 python -m pip install --upgrade pip
-```
-
-### Bước 5: cài package cho backend
-
-```powershell
 python -m pip install -r requirements.txt
-```
-
-### Bước 6: chạy backend
-
-```powershell
 uvicorn app.main:app --reload
 ```
 
-Kỳ vọng:
-- backend chạy ở `http://127.0.0.1:8000`
-- mở `http://127.0.0.1:8000/docs` sẽ thấy Swagger UI
+Sau khi chạy thành công:
+- backend ở `http://127.0.0.1:8000`
+- Swagger ở `http://127.0.0.1:8000/docs`
+- health check ở `http://127.0.0.1:8000/health`
 
-### Bước 7: kiểm tra nhanh backend
+## 8. Cài frontend từ đầu
 
-Mở trình duyệt:
-
-```text
-http://127.0.0.1:8000/health
-```
-
-Kỳ vọng:
-
-```json
-{
-  "status": "ok",
-  "service": "backend-uoc-luong-ucp"
-}
-```
-
----
-
-## 6. Cài frontend từ đầu trên máy mới
-
-### Bước 1: mở terminal mới và vào thư mục frontend
+Mở terminal mới:
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\frontend"
-```
-
-### Bước 2: cài package
-
-```powershell
 npm install
-```
-
-### Bước 3: chạy frontend
-
-```powershell
 npm run dev
 ```
 
-Kỳ vọng:
-- frontend chạy ở `http://localhost:5173`
+Sau khi chạy thành công:
+- frontend ở `http://localhost:5173`
 
-### Bước 4: mở giao diện
+## 9. Cách chạy project đầy đủ
 
-Mở trình duyệt:
-
-```text
-http://localhost:5173
-```
-
-Frontend mặc định gọi backend ở:
-
-```text
-http://localhost:8000
-```
-
-Vì vậy backend phải chạy trước hoặc chạy cùng lúc.
-
----
-
-## 7. Cách chạy project đầy đủ trên máy mới
-
-Bạn cần **2 terminal**.
+Cần 2 terminal:
 
 ### Terminal 1: backend
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
@@ -287,7 +202,6 @@ uvicorn app.main:app --reload
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\frontend"
-npm install
 npm run dev
 ```
 
@@ -297,30 +211,7 @@ Sau đó mở:
 http://localhost:5173
 ```
 
----
-
-## 8. Nếu project đã có sẵn môi trường rồi thì chạy nhanh
-
-Nếu project đã cài sẵn từ trước và thư mục `backend/.venv` + `frontend/node_modules` vẫn còn dùng tốt:
-
-### Backend
-
-```powershell
-cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
-.\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload
-```
-
-### Frontend
-
-```powershell
-cd "D:\Repositories\AI Tool for Automatic UCPE\frontend"
-npm run dev
-```
-
----
-
-## 9. Chạy test và build
+## 10. Cách chạy test
 
 ### Backend test
 
@@ -337,174 +228,123 @@ cd "D:\Repositories\AI Tool for Automatic UCPE\frontend"
 npm run build
 ```
 
----
+## 11. LLM Mode là gì
 
-## 10. LLM Mode là gì
-
-Frontend có mục `LLM Mode` với 2 lựa chọn:
+Trên frontend có 2 lựa chọn:
 
 ### `Mock Mode`
 
-- dùng extractor nội bộ theo rule
-- không gọi LLM thật
-- phù hợp để demo ổn định trên lớp
+Công dụng cụ thể:
+- không gọi AI thật
+- dùng extractor rule-based trong backend
+- cho kết quả ổn định khi demo
 - không cần API key
+- phù hợp khi thầy/cô hỏi demo offline
 
 ### `Placeholder API Mode`
 
-- hiện chưa gọi LLM thật
-- nhưng backend vẫn build prompt để giữ sẵn kiến trúc tích hợp LLM
-- phù hợp để giải thích rằng project có thể nâng cấp sang AI thật sau này
+Công dụng cụ thể:
+- giữ sẵn vị trí tích hợp LLM API thật
+- backend vẫn build prompt nội bộ
+- giúp giải thích kiến trúc AI của project
+- hiện tại vẫn fallback về extractor nội bộ để tránh lỗi demo
+
+Nói ngắn gọn:
+- `Mock Mode` dùng để demo ổn định
+- `Placeholder API Mode` dùng để chứng minh kiến trúc có thể mở rộng sang LLM thật
 
 File liên quan:
 - `backend/app/services/llm_extractor.py`
 - `backend/app/services/prompt_templates.py`
 - `frontend/src/pages/HomePage.jsx`
 
----
+## 12. Luồng xử lý backend hiện tại
 
-## 11. Các lỗi thường gặp và cách xử lý
+Luồng tổng quát:
 
-### Lỗi 1: `No module named fastapi`
+1. Frontend gửi text hoặc file lên API.
+2. Backend đọc file bằng `file_reader.py`.
+3. `llm_extractor.py` kiểm tra input là free-text hay Use Case Document.
+4. Nếu là tài liệu có cấu trúc:
+   - parse bằng `use_case_document_parser.py`
+   - chuẩn hóa bằng `normalization.py`
+   - phân loại actor bằng `actor_classifier.py`
+   - phân loại use case theo transaction count bằng `use_case_classifier.py`
+5. Nếu là free-text:
+   - extractor tách actor/use case thô
+   - normalization làm sạch, bỏ trùng, bỏ internal step
+6. `analysis.py` chuyển dữ liệu sạch sang `ucp_calculator.py`
+7. Hệ thống tính `UCP`, `Effort`, `Schedule`
+8. Frontend hiển thị bảng, card, biểu đồ
 
-Nguyên nhân:
-- chưa activate `backend/.venv`
-- hoặc đang dùng sai Python
+## 13. Các file quan trọng nên biết
+
+- `backend/app/api/routes/analysis.py`
+  - route chính của `/extract`, `/ucp/calculate`, `/analyze-and-calculate`
+
+- `backend/app/services/llm_extractor.py`
+  - điều phối luồng extraction
+
+- `backend/app/utils/use_case_document_parser.py`
+  - parser tài liệu SRS / Use Case Document
+
+- `backend/app/utils/normalization.py`
+  - lớp làm sạch dữ liệu trước khi tính UCP
+
+- `backend/app/services/actor_classifier.py`
+  - phân loại actor theo chuẩn UCP
+
+- `backend/app/services/use_case_classifier.py`
+  - phân loại use case theo transaction count
+
+- `backend/app/services/ucp_calculator.py`
+  - công thức UCP lõi
+
+- `frontend/src/pages/HomePage.jsx`
+  - giao diện chính
+
+## 14. Lỗi thường gặp
+
+### Lỗi `No module named fastapi`
 
 Cách xử lý:
-
-```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-### Lỗi 2: `pip` cài nhầm sang Python khác
-
-Nguyên nhân:
-- dùng `pip install ...` thay vì `python -m pip install ...`
-
-Cách xử lý đúng:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-### Lỗi 3: PowerShell chặn activate script
-
-Nếu gặp lỗi Execution Policy:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-Rồi activate lại:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-### Lỗi 4: `npm install` lỗi hoặc frontend không lên
-
-Cách xử lý:
-
-```powershell
-cd frontend
-Remove-Item -Recurse -Force node_modules
-npm install
-npm run dev
-```
-
-### Lỗi 5: frontend lên nhưng không gọi được backend
-
-Kiểm tra:
-- backend có đang chạy ở `http://localhost:8000` không
-- mở `http://localhost:8000/health` xem có trả `status: ok` không
-
-### Lỗi 6: giải nén project xong bị lồng folder
-
-Chỉ nên dùng đúng folder có cấu trúc:
-
-```text
-AI Tool for Automatic UCPE/
-  backend/
-  frontend/
-  README.md
-```
-
-Không chạy ở folder ngoài nếu bên trong còn một lớp `AI Tool for Automatic UCPE` nữa.
-
----
-
-## 12. Làm sạch môi trường nếu chạy lỗi nặng
-
-Nếu máy bị rối môi trường, có thể làm sạch như sau.
-
-### Làm sạch backend
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
-deactivate
-Remove-Item -Recurse -Force .venv
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### Làm sạch frontend
+### Lỗi PowerShell không cho activate
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+### Lỗi frontend không gọi được backend
+
+Kiểm tra:
+- backend đã chạy chưa
+- `http://localhost:8000/health` có trả `status: ok` không
+
+### Lỗi môi trường frontend
 
 ```powershell
 cd "D:\Repositories\AI Tool for Automatic UCPE\frontend"
 Remove-Item -Recurse -Force node_modules
-Remove-Item -Force package-lock.json
 npm install
 ```
 
-Chỉ xóa `package-lock.json` khi bạn thật sự muốn cài lại toàn bộ dependency từ đầu.
+## 15. Ghi chú cuối
 
----
+Project này hiện:
+- ưu tiên dễ đọc, dễ demo, dễ giải thích
+- không tối ưu theo hướng production phức tạp
+- có comment tiếng Việt ở các file logic mới để dễ học và dễ bảo vệ đồ án
 
-## 13. Danh sách dependency hiện tại
-
-### Backend
-
-Trong `backend/requirements.txt`:
-- fastapi
-- uvicorn
-- pydantic
-- python-multipart
-- pytest
-- httpx
-
-### Frontend
-
-Trong `frontend/package.json`:
-- react
-- react-dom
-- chart.js
-- react-chartjs-2
-- vite
-- @vitejs/plugin-react
-
----
-
-## 14. Ghi chú kỹ thuật
-
-- Phiên bản hiện tại chưa parse nhị phân `.docx` thật
-- File upload hiện được xử lý như nguồn text đơn giản
-- Project tập trung vào **UCP estimation từ free-text requirements**
-- Đây là prototype học thuật, ưu tiên:
-  - dễ đọc
-  - dễ demo
-  - dễ giải thích
-
----
-
-## 15. Khi cần giải thích code
-
-Nếu cần hiểu từng folder/file:
+Nếu cần hiểu rõ từng file:
 - xem [PROJECT_STRUCTURE_VI.md](./PROJECT_STRUCTURE_VI.md)
 
-Nếu cần thuyết trình luồng chạy từ input đến output:
+Nếu cần thuyết trình luồng chạy:
 - xem [THUYET_MINH_CODE_VI.md](./THUYET_MINH_CODE_VI.md)
