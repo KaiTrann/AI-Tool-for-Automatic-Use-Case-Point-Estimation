@@ -11,10 +11,18 @@ import {
   analyzeAndCalculate,
   calculateUCP,
   checkHealth,
+  // Gọi API xóa một run trong lịch sử.
+  deleteAnalysisRun,
   extractData,
+  // Gọi API lấy chi tiết một run.
+  getAnalysisRun,
+  // Gọi API lấy danh sách run đã lưu.
+  listAnalysisRuns,
 } from "../api/client";
 import ActorsTable from "../components/ActorsTable";
 import ChartPanel from "../components/ChartPanel";
+// Component hiển thị bảng lịch sử tính toán từ MySQL.
+import HistoryPanel from "../components/HistoryPanel";
 import ResultCards from "../components/ResultCards";
 import UseCasesTable from "../components/UseCasesTable";
 import { buildInputSignature, buildUcpPayload } from "../utils/requestHelpers";
@@ -66,6 +74,18 @@ function HomePage() {
   // Dùng để biết dữ liệu extract hiện tại có còn khớp với input đang nhập hay không.
   const [extractionSignature, setExtractionSignature] = useState("");
 
+  // Danh sách các lần tính toán đã được lưu trong MySQL.
+  const [historyRuns, setHistoryRuns] = useState([]);
+
+  // Run lịch sử đang được chọn để người dùng biết mình đang xem lại lần nào.
+  const [selectedHistoryRunId, setSelectedHistoryRunId] = useState(null);
+
+  // Loading riêng cho mục lịch sử, tách khỏi loading của nút Extract/Calculate.
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Lỗi riêng của mục lịch sử để không làm mất lỗi chính của form.
+  const [historyError, setHistoryError] = useState("");
+
   useEffect(() => {
     // Hàm nhỏ để gọi API health khi trang vừa mở.
     async function loadHealth() {
@@ -78,8 +98,110 @@ function HomePage() {
       }
     }
 
+    // Kiểm tra backend khi trang vừa mở.
     loadHealth();
+    // Tải lịch sử từ MySQL khi trang vừa mở.
+    loadHistory();
   }, []);
+
+  // Tải danh sách lịch sử tính toán từ backend.
+  async function loadHistory() {
+    // Bật loading riêng của lịch sử.
+    setHistoryLoading(true);
+    // Xóa lỗi lịch sử cũ trước khi gọi API mới.
+    setHistoryError("");
+
+    try {
+      // Gọi GET /analysis-runs.
+      const data = await listAnalysisRuns();
+
+      // Mục lịch sử này chỉ hiển thị run đã có kết quả UCP.
+      const calculatedRuns = (data.runs ?? []).filter(
+        (run) => run.ucp !== null && run.ucp !== undefined
+      );
+      // Lưu danh sách đã lọc vào state để HistoryPanel render.
+      setHistoryRuns(calculatedRuns);
+    } catch (error) {
+      // Nếu MySQL/backend lỗi thì hiển thị lỗi trong panel lịch sử.
+      setHistoryError(error.message);
+    } finally {
+      // Tắt loading dù thành công hay thất bại.
+      setHistoryLoading(false);
+    }
+  }
+
+  // Khi bấm "Xem Lại", frontend lấy chi tiết run và đổ lên bảng/card hiện tại.
+  async function handleSelectHistoryRun(runId) {
+    // Bật loading khi đang lấy chi tiết run.
+    setHistoryLoading(true);
+    // Xóa lỗi lịch sử cũ.
+    setHistoryError("");
+    // Xóa message form cũ để tránh gây hiểu nhầm.
+    clearMessages();
+
+    try {
+      // Gọi GET /analysis-runs/{run_id}.
+      const savedRun = await getAnalysisRun(runId);
+      // Chuyển data DB về đúng format component hiện tại đang dùng.
+      const mappedData = mapSavedRunToCurrentResult(savedRun);
+
+      // Đổ lại actors/use_cases lên bảng hiện tại.
+      setExtraction(mappedData.extraction);
+      // Đổ lại UCP/Effort/Schedule lên result cards.
+      setResult(mappedData.result);
+      // Lưu run đang chọn để tô sáng dòng trong lịch sử.
+      setSelectedHistoryRunId(runId);
+      // Báo cho người dùng biết đã tải lại dữ liệu từ lịch sử.
+      setSuccessMessage(`Đã tải lại kết quả từ lịch sử run #${runId}.`);
+    } catch (error) {
+      // Nếu lỗi thì chỉ hiện lỗi ở panel lịch sử.
+      setHistoryError(error.message);
+    } finally {
+      // Tắt loading.
+      setHistoryLoading(false);
+    }
+  }
+
+  // Xóa một run khỏi lịch sử nếu người dùng thấy danh sách quá nhiều.
+  async function handleDeleteHistoryRun(runId) {
+    // Hỏi xác nhận để tránh người dùng bấm nhầm xóa lịch sử.
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa lịch sử run #${runId}? Dữ liệu actor, use case, calculation và log liên quan cũng sẽ bị xóa.`
+    );
+
+    // Nếu người dùng bấm Cancel thì dừng lại, không gọi API.
+    if (!confirmed) {
+      return;
+    }
+
+    // Bật loading khi đang xóa.
+    setHistoryLoading(true);
+    // Xóa lỗi lịch sử cũ.
+    setHistoryError("");
+    // Xóa message form cũ.
+    clearMessages();
+
+    try {
+      // Gọi DELETE /analysis-runs/{run_id}.
+      await deleteAnalysisRun(runId);
+
+      // Nếu run đang xem bị xóa thì bỏ trạng thái selected.
+      if (selectedHistoryRunId === runId) {
+        setSelectedHistoryRunId(null);
+      }
+
+      // Báo xóa thành công.
+      setSuccessMessage(`Đã xóa lịch sử run #${runId}.`);
+      // Tải lại danh sách lịch sử sau khi xóa.
+      await loadHistory();
+    } catch (error) {
+      // Nếu xóa lỗi thì hiển thị trong panel lịch sử.
+      setHistoryError(error.message);
+    } finally {
+      // Tắt loading.
+      setHistoryLoading(false);
+    }
+  }
 
   // Cập nhật state mới khi người dùng thay đổi text hoặc các thông số.
   function handleInputChange(event) {
@@ -123,6 +245,8 @@ function HomePage() {
         buildInputSignature(formValues.text, formValues.llmMode, selectedFile)
       );
       setSuccessMessage("Trích xuất dữ liệu thành công.");
+      // Refresh lịch sử vì /extract cũng có lưu run extract_only, dù panel chỉ hiển thị run có calculation.
+      loadHistory();
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -158,6 +282,8 @@ function HomePage() {
 
         setResult(calculationData);
         setSuccessMessage("Tính toán UCP thành công.");
+        // Refresh lịch sử để run calculate_only vừa lưu xuất hiện ngay.
+        loadHistory();
         return;
       }
 
@@ -184,6 +310,8 @@ function HomePage() {
       });
       setExtractionSignature(currentSignature);
       setSuccessMessage("Trích xuất và tính toán UCP thành công.");
+      // Refresh lịch sử để run analyze_and_calculate vừa lưu xuất hiện ngay.
+      loadHistory();
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -355,9 +483,81 @@ function HomePage() {
         <section className="panel panel-wide">
           <ChartPanel extraction={extraction} />
         </section>
+
+        <section className="panel panel-wide">
+          {/* HistoryPanel nhận state và handler từ HomePage để hiển thị/xem/xóa lịch sử MySQL. */}
+          <HistoryPanel
+            runs={historyRuns}
+            loading={historyLoading}
+            error={historyError}
+            selectedRunId={selectedHistoryRunId}
+            onRefresh={loadHistory}
+            onSelectRun={handleSelectHistoryRun}
+            onDeleteRun={handleDeleteHistoryRun}
+          />
+        </section>
       </main>
     </div>
   );
+}
+
+// Chuyển dữ liệu chi tiết từ endpoint /analysis-runs/{run_id}
+// về đúng format mà ActorsTable, UseCasesTable và ResultCards đang dùng.
+function mapSavedRunToCurrentResult(savedRun) {
+  // calculation là object lấy từ bảng calculations.
+  const calculation = savedRun.calculation ?? {};
+  // run là object lấy từ bảng analysis_runs.
+  const run = savedRun.run ?? {};
+  // actors là danh sách lấy từ bảng extracted_actors.
+  const actors = savedRun.actors ?? [];
+  // useCases là danh sách lấy từ bảng extracted_use_cases.
+  const useCases = savedRun.use_cases ?? [];
+
+  // Trả về format giống response của /analyze-and-calculate để component cũ dùng lại được.
+  return {
+    // extraction dùng cho ActorsTable, UseCasesTable và ChartPanel.
+    extraction: {
+      // Map actor_name trong DB về name trên frontend.
+      actors: actors.map((actor) => ({
+        name: actor.actor_name,
+        complexity: actor.complexity,
+      })),
+      // Map use_case_name trong DB về name trên frontend.
+      use_cases: useCases.map((useCase) => ({
+        name: useCase.use_case_name,
+        complexity: useCase.complexity,
+        description: useCase.description,
+      })),
+      // Ghi chú để biết dữ liệu đang xem là dữ liệu lịch sử.
+      notes: ["Dữ liệu được tải lại từ lịch sử MySQL."],
+    },
+    // result dùng cho ResultCards.
+    result: {
+      // Nhóm chỉ số UCP.
+      ucp: {
+        uaw: calculation.uaw,
+        uucw: calculation.uucw,
+        uucp: calculation.uucp,
+        ucp: calculation.ucp,
+        actor_count: actors.length,
+        use_case_count: useCases.length,
+        technical_complexity_factor: run.technical_complexity_factor,
+        environmental_complexity_factor: run.environmental_complexity_factor,
+      },
+      // Nhóm effort.
+      effort: {
+        hours: calculation.effort_hours,
+        person_days: calculation.person_days,
+        productivity_factor: calculation.productivity_factor,
+      },
+      // Nhóm schedule.
+      schedule: {
+        months: calculation.schedule_months,
+        recommended_team_size: calculation.recommended_team_size,
+        sprint_count: calculation.sprint_count,
+      },
+    },
+  };
 }
 
 export default HomePage;

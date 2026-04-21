@@ -18,6 +18,7 @@ AI Tool for Automatic UCPE/
 ├─ THUYET_MINH_CODE_VI.md
 ├─ backend/
 │  ├─ requirements.txt
+│  ├─ database/
 │  ├─ app/
 │  └─ tests/
 └─ frontend/
@@ -54,10 +55,12 @@ Công dụng:
 ```text
 backend/
 ├─ requirements.txt
+├─ database/
 ├─ app/
 │  ├─ main.py
 │  ├─ api/
 │  ├─ models/
+│  ├─ repositories/
 │  ├─ services/
 │  └─ utils/
 └─ tests/
@@ -74,6 +77,19 @@ Ví dụ:
 - `pydantic`
 - `pytest`
 - `python-multipart`
+- `mysql-connector-python`
+
+### `backend/database/schema.sql`
+
+Công dụng:
+- tạo database/table MySQL để lưu kết quả phân tích UCP
+- gồm 7 bảng: `documents`, `analysis_runs`, `parsed_use_case_documents`, `extracted_actors`, `extracted_use_cases`, `calculations`, `run_logs`
+- dùng `utf8mb4` để lưu được tiếng Việt trong tài liệu SRS/use case document
+- có migration cho `documents.raw_text` để `/ucp/calculate` vẫn lưu được khi không có text gốc
+
+Khi nào mở file này:
+- khi cần tạo database trên máy demo
+- khi cần chứng minh hệ thống lưu dữ liệu vào những bảng nào
 
 ## 4. Backend app
 
@@ -127,11 +143,13 @@ Chức năng:
 - nhận text và file upload
 - gọi extraction service
 - gọi UCP calculator
+- gọi repository để lưu document, analysis run, actors, use cases, calculation và logs vào MySQL
 - trả kết quả cho frontend
 
 Khi nào mở file này:
 - khi cần giải thích backend nhận request như thế nào
 - khi cần chứng minh luồng “extract rồi calculate”
+- khi cần chứng minh kết quả được lưu tự động sau khi xử lý thành công
 
 ## 6. Models layer
 
@@ -186,7 +204,40 @@ File này chứa:
 - `AnalysisAndCalculationResponse`
 - các response con cho effort, schedule, breakdown
 
-## 7. Services layer
+## 7. Repositories layer
+
+```text
+backend/app/repositories/
+├─ __init__.py
+└─ analysis_repository.py
+```
+
+### `backend/app/database.py`
+
+Công dụng:
+- đọc cấu hình MySQL từ biến môi trường hoặc cấu hình mặc định
+- tạo connection tới MySQL `localhost:3307`
+- dùng `mysql-connector-python`
+
+Khi nào mở file này:
+- khi cần đổi host, port, username, password hoặc database
+- khi cần giải thích backend kết nối MySQL như thế nào
+
+### `backend/app/repositories/analysis_repository.py`
+
+Công dụng:
+- chứa toàn bộ SQL insert/select cho chức năng lưu kết quả UCP
+- tạo document, analysis run, log, actor, use case và calculation
+- có hàm `list_saved_runs()` để lấy lịch sử
+- có hàm `get_analysis_result(run_id)` để xem lại chi tiết
+- có hàm `delete_analysis_run(run_id)` để xóa một kết quả lịch sử
+
+Khi nào mở file này:
+- khi cần chứng minh kết quả đã được lưu vào MySQL
+- khi cần debug dữ liệu trong các bảng `documents`, `analysis_runs`, `calculations`
+- khi cần giải thích nút **Xem Lại** hoặc **Xóa** trong mục lịch sử
+
+## 8. Services layer
 
 ```text
 backend/app/services/
@@ -290,7 +341,7 @@ Công thức:
 Schedule = effort_hours / (team_size * 160)
 ```
 
-## 8. Utils layer
+## 9. Utils layer
 
 ```text
 backend/app/utils/
@@ -409,7 +460,7 @@ Khi nào mở file này:
 - khi có use case thừa
 - khi bị hỏi vì sao một actor/use case bị loại bỏ
 
-## 9. Test layer
+## 10. Test layer
 
 ```text
 backend/tests/
@@ -441,7 +492,7 @@ Công dụng:
 - test effort
 - test schedule
 
-## 10. Frontend tổng quan
+## 11. Frontend tổng quan
 
 ```text
 frontend/
@@ -478,7 +529,7 @@ Công dụng:
 Công dụng:
 - app gốc, render `HomePage`
 
-## 11. Frontend API
+## 12. Frontend API
 
 ### `frontend/src/api/client.js`
 
@@ -491,7 +542,7 @@ Các hàm chính:
 - `calculateUCP()`
 - `analyzeAndCalculate()`
 
-## 12. Frontend page chính
+## 13. Frontend page chính
 
 ### `frontend/src/pages/HomePage.jsx`
 
@@ -506,7 +557,7 @@ Chức năng:
 - bấm `Calculate`
 - hiển thị loading, error, success
 
-## 13. Frontend components
+## 14. Frontend components
 
 ### `frontend/src/components/ActorsTable.jsx`
 
@@ -528,7 +579,7 @@ Công dụng:
 Công dụng:
 - hiển thị biểu đồ phân bố complexity bằng Chart.js
 
-## 14. Frontend helper
+## 15. Frontend helper
 
 ### `frontend/src/utils/requestHelpers.js`
 
@@ -536,7 +587,7 @@ Công dụng:
 - tạo payload gửi backend
 - so khớp chữ ký input để biết có cần extract lại không
 
-## 15. Khi bị hỏi “muốn giải thích chức năng này thì mở file nào?”
+## 16. Khi bị hỏi “muốn giải thích chức năng này thì mở file nào?”
 
 - Route backend:
   - `backend/app/api/routes/analysis.py`
@@ -559,6 +610,22 @@ Công dụng:
 
 - Công thức UCP:
   - `backend/app/services/ucp_calculator.py`
+
+- Lưu kết quả vào MySQL:
+  - `backend/app/database.py`
+  - `backend/app/repositories/analysis_repository.py`
+  - `backend/database/schema.sql`
+
+- API xem/xóa lịch sử:
+  - `backend/app/api/routes/analysis.py`
+  - `GET /analysis-runs`
+  - `GET /analysis-runs/{run_id}`
+  - `DELETE /analysis-runs/{run_id}`
+
+- Giao diện lịch sử:
+  - `frontend/src/components/HistoryPanel.jsx`
+  - `frontend/src/pages/HomePage.jsx`
+  - `frontend/src/api/client.js`
 
 - Giao diện chính:
   - `frontend/src/pages/HomePage.jsx`

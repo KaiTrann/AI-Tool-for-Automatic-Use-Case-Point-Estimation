@@ -150,3 +150,32 @@ export async function analyzeAndCalculate(text, options = {}) {
     body: buildAnalysisFormData(text, options),
   });
 }
+
+// Lấy danh sách các lần tính toán đã lưu trong MySQL.
+// API backend trả về dạng: { runs: [...] }.
+export async function listAnalysisRuns() {
+  // Gọi endpoint backend lấy danh sách run đã lưu.
+  return apiRequest("/analysis-runs", {
+    // GET vì chỉ đọc dữ liệu, không thay đổi database.
+    method: "GET",
+  });
+}
+
+// Lấy chi tiết một lần chạy để frontend có thể hiển thị lại actor, use case và kết quả UCP.
+export async function getAnalysisRun(runId) {
+  // runId là id của analysis_runs trong MySQL.
+  return apiRequest(`/analysis-runs/${runId}`, {
+    // GET chi tiết một run.
+    method: "GET",
+  });
+}
+
+// Xóa một lần tính toán khỏi lịch sử MySQL.
+// Backend sẽ xóa cascade các actor/use case/calculation/log liên quan.
+export async function deleteAnalysisRun(runId) {
+  // runId là id cần xóa khỏi bảng analysis_runs.
+  return apiRequest(`/analysis-runs/${runId}`, {
+    // DELETE để backend xóa run và các bảng con liên quan.
+    method: "DELETE",
+  });
+}

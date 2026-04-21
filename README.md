@@ -9,7 +9,7 @@
 
 Project phù hợp cho demo sinh viên vì:
 - code đơn giản, tách module rõ
-- không dùng database
+- có lưu kết quả vào MySQL sau khi extract/tính UCP
 - không dùng authentication phức tạp
 - có thể demo bằng text thường hoặc file `.docx`
 
@@ -350,7 +350,117 @@ Remove-Item -Recurse -Force node_modules
 npm install
 ```
 
-## 15. Ghi chú cuối
+## 15. Lưu kết quả vào MySQL
+
+Project hiện có persistence đơn giản để lưu kết quả demo sau khi backend extract actor/use case và tính UCP.
+
+Thông tin database mặc định:
+
+```text
+Host: localhost
+Port: 3307
+Username: khanh
+Password: khanhcute2306
+Database: ucpdb
+```
+
+Các bảng chính:
+
+- `documents`: lưu input gốc, tên file upload, loại input.
+- `analysis_runs`: lưu một lần chạy phân tích/tính toán.
+- `parsed_use_case_documents`: lưu Use Case Document đã parse/normalize.
+- `extracted_actors`: lưu actor đã trích xuất.
+- `extracted_use_cases`: lưu use case đã trích xuất.
+- `calculations`: lưu UAW, UUCW, UUCP, UCP, Effort, Schedule.
+- `run_logs`: lưu log từng bước như file_read, parser, extract, normalize, calculate.
+
+### Cài package MySQL cho backend
+
+Package đã nằm trong `backend/requirements.txt`, nên trên máy mới chỉ cần:
+
+```powershell
+cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Nếu muốn cài riêng:
+
+```powershell
+python -m pip install mysql-connector-python
+```
+
+### Tạo database và bảng
+
+Mở MySQL bằng user `root` hoặc user có quyền tạo database:
+
+```powershell
+mysql -h localhost -P 3307 -u khanh -p
+```
+
+Sau đó nhập password `khanhcute2306`.
+
+Nếu database chưa có, chạy:
+
+```sql
+CREATE DATABASE IF NOT EXISTS ucpdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+Thoát MySQL rồi chạy schema:
+
+```powershell
+cd "D:\Repositories\AI Tool for Automatic UCPE\backend"
+mysql -h localhost -P 3307 -u khanh -p ucpdb < database\schema.sql
+```
+
+### Biến môi trường nếu đổi cấu hình MySQL
+
+Nếu máy khác dùng tài khoản khác, có thể set trước khi chạy backend:
+
+```powershell
+$env:UCP_DB_HOST="localhost"
+$env:UCP_DB_PORT="3307"
+$env:UCP_DB_USER="khanh"
+$env:UCP_DB_PASSWORD="khanhcute2306"
+$env:UCP_DB_NAME="ucpdb"
+uvicorn app.main:app --reload
+```
+
+### Cách kiểm tra dữ liệu đã lưu
+
+1. Chạy backend và frontend như bình thường.
+2. Nhập text hoặc upload file `.docx`.
+3. Bấm analyze/calculate trên giao diện.
+4. Mở Swagger tại `http://127.0.0.1:8000/docs`.
+5. Gọi `GET /analysis-runs` để xem danh sách lần chạy đã lưu.
+6. Gọi `GET /analysis-runs/{run_id}` để xem chi tiết document, actors, use cases, calculation và logs.
+7. Gọi `DELETE /analysis-runs/{run_id}` hoặc bấm nút **Xóa** ở frontend để xóa một kết quả lịch sử.
+
+Ghi chú: nếu MySQL chưa bật, backend vẫn cố gắng giữ API extraction/UCP chạy như cũ để không làm hỏng demo. Khi cần kiểm tra chức năng lưu, hãy đảm bảo MySQL đang chạy và đã chạy `database/schema.sql`.
+
+### Lịch sử tính toán trên frontend
+
+Frontend có mục **Lịch Sử Tính Toán** ở cuối trang:
+
+- **Tải Lại**: gọi `GET /analysis-runs` để lấy các kết quả đã lưu.
+- **Xem Lại**: gọi `GET /analysis-runs/{run_id}` rồi đưa actor, use case, UCP, effort, schedule lên lại bảng/card.
+- **Xóa**: gọi `DELETE /analysis-runs/{run_id}` để xóa một run khỏi lịch sử.
+
+Khi xóa một `analysis_run`, MySQL tự xóa dữ liệu liên quan trong các bảng con nhờ `ON DELETE CASCADE`.
+
+### Lưu ý về `raw_text`
+
+Endpoint `/ucp/calculate` chỉ nhận actor/use case đã có sẵn, nên có thể không có input text gốc.
+Vì vậy backend đã xử lý `raw_text` rỗng an toàn và `database/schema.sql` cũng có migration:
+
+```sql
+ALTER TABLE documents
+  MODIFY raw_text LONGTEXT NULL;
+```
+
+Nếu máy đã từng tạo database từ phiên bản cũ, hãy chạy lại `database/schema.sql` hoặc chạy riêng câu `ALTER TABLE` trên để tránh lỗi tính được nhưng không lưu được calculation.
+
+## 16. Ghi chú cuối
 
 Project này hiện:
 - ưu tiên dễ đọc, dễ demo, dễ giải thích

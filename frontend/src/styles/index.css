@@ -166,7 +166,8 @@ select {
 }
 
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   border: none;
   border-radius: 12px;
   padding: 12px 18px;
@@ -184,13 +185,19 @@ select {
   background: var(--accent);
 }
 
+.danger-button {
+  background: #a4133c;
+}
+
 .primary-button:hover,
-.secondary-button:hover {
+.secondary-button:hover,
+.danger-button:hover {
   transform: translateY(-1px);
 }
 
 .primary-button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.danger-button:disabled {
   opacity: 0.7;
   cursor: wait;
 }
@@ -241,6 +248,56 @@ th {
 
 .chart-wrapper {
   height: 320px;
+}
+
+.history-header {
+  /* Sắp xếp tiêu đề lịch sử bên trái và nút tải lại bên phải. */
+  display: flex;
+  /* Căn theo đầu khối để đoạn mô tả dài không làm lệch nút. */
+  align-items: flex-start;
+  /* Đẩy hai phần ra hai phía. */
+  justify-content: space-between;
+  /* Khoảng cách khi màn hình nhỏ. */
+  gap: 16px;
+}
+
+.compact-button {
+  /* Nút trong bảng lịch sử nhỏ hơn nút chính của form. */
+  padding: 8px 12px;
+  /* Font nhỏ hơn một chút để vừa trong ô thao tác. */
+  font-size: 0.9rem;
+  /* Không cho chữ trong nút bị xuống dòng. */
+  white-space: nowrap;
+}
+
+.history-table-card {
+  /* Cho bảng lịch sử cuộn ngang nếu màn hình hẹp. */
+  overflow-x: auto;
+}
+
+.history-action-row {
+  /* Đặt nút Xem Lại và Xóa trên cùng một hàng. */
+  display: flex;
+  /* Cho phép xuống dòng nếu ô quá hẹp. */
+  flex-wrap: wrap;
+  /* Khoảng cách giữa hai nút. */
+  gap: 8px;
+}
+
+.history-meta {
+  /* Hiển thị ngày giờ ở dòng riêng dưới title. */
+  display: block;
+  /* Cách title một chút. */
+  margin-top: 4px;
+  /* Dùng màu phụ để không cạnh tranh với title. */
+  color: var(--muted);
+  /* Font nhỏ hơn nội dung chính. */
+  font-size: 0.85rem;
+}
+
+.selected-row {
+  /* Tô nền nhẹ cho run đang được xem lại. */
+  background: rgba(21, 97, 109, 0.08);
 }
 
 .empty-chart-state {

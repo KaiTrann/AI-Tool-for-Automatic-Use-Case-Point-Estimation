@@ -51,7 +51,8 @@ Luồng đầy đủ từ lúc người dùng nhập dữ liệu đến lúc ra 
 6. Dữ liệu trích xuất đi qua bước normalization.
 7. Dữ liệu sạch được đưa sang bộ tính UCP.
 8. Backend tính `Effort` và `Schedule`.
-9. Kết quả được trả về frontend để hiển thị.
+9. Backend lưu input, actor, use case, calculation và log vào MySQL.
+10. Kết quả được trả về frontend để hiển thị.
 
 Nếu cần nói ngắn gọn khi bảo vệ:
 
@@ -148,6 +149,7 @@ File này chịu trách nhiệm:
 - gọi extraction service
 - chuẩn hóa dữ liệu trước khi tính
 - gọi UCP calculator
+- gọi repository để lưu kết quả vào MySQL sau khi xử lý thành công
 - trả kết quả về frontend
 
 ## 6. Bước 4: Backend đọc text và file upload
@@ -491,7 +493,63 @@ Schedule = effort_hours / (team_size * 160)
 - mặc định 1 người làm 160 giờ mỗi tháng
 - team lớn hơn thì số tháng dự kiến giảm xuống
 
-## 15. Bước 13: Backend trả kết quả về frontend
+## 15. Bước 13: Backend lưu kết quả vào MySQL
+
+### File chính
+
+- `backend/app/database.py`
+- `backend/app/repositories/analysis_repository.py`
+- `backend/database/schema.sql`
+- `backend/app/api/routes/analysis.py`
+
+### Luồng lưu dữ liệu
+
+Sau khi extraction và calculation chạy thành công, route `analysis.py` gọi `AnalysisRepository` để lưu:
+- `documents`: input gốc từ text hoặc file upload
+- `analysis_runs`: một lần chạy phân tích
+- `parsed_use_case_documents`: use case document đã parse nếu input là SRS/template
+- `extracted_actors`: actor đã normalize và weight actor
+- `extracted_use_cases`: use case đã normalize, complexity, weight và transaction count nếu có
+- `calculations`: UAW, UUCW, UUCP, UCP, Effort, Schedule
+- `run_logs`: log từng bước như `file_read`, `parser`, `extract`, `normalize`, `calculate`
+
+Điểm quan trọng khi thuyết trình:
+
+> Hệ thống không tính xong rồi bỏ kết quả trong bộ nhớ. Sau khi xử lý thành công, backend lưu lại cả input, dữ liệu trích xuất, kết quả tính toán và log vào MySQL để có thể xem lại hoặc chứng minh quá trình chạy.
+
+### API xem lại dữ liệu đã lưu
+
+- `GET /analysis-runs`: xem danh sách các lần chạy đã lưu
+- `GET /analysis-runs/{run_id}`: xem chi tiết document, actors, use cases, calculation và logs
+- `DELETE /analysis-runs/{run_id}`: xóa một kết quả lịch sử khi danh sách quá nhiều
+
+### Frontend lịch sử tính toán
+
+Ở cuối giao diện có component:
+
+- `frontend/src/components/HistoryPanel.jsx`
+
+Component này có 3 thao tác chính:
+
+- **Tải Lại**: lấy danh sách lịch sử từ MySQL.
+- **Xem Lại**: lấy chi tiết một run rồi đổ lại dữ liệu lên bảng Actor, bảng Use Case và Result Cards.
+- **Xóa**: xóa một run khỏi lịch sử. Các bảng con như actor, use case, calculation và logs tự xóa theo `ON DELETE CASCADE`.
+
+### Lưu ý lỗi đã xử lý
+
+Trước đây `/ucp/calculate` có thể tính ra kết quả nhưng không lưu được DB nếu bảng `documents.raw_text` đang là `NOT NULL`.
+Lý do là endpoint này chỉ nhận actor/use case đã có, không nhất thiết có raw text gốc.
+
+Hiện tại project đã xử lý bằng 2 cách:
+
+- Trong `analysis_repository.py`, nếu `raw_text` không có thì lưu chuỗi rỗng `""`.
+- Trong `database/schema.sql`, có migration cho phép `documents.raw_text` là `NULL`.
+
+Khi bảo vệ có thể giải thích:
+
+> Nhánh `/analyze-and-calculate` lưu được input text/file gốc. Nhánh `/ucp/calculate` là tính từ actor/use case đã có, nên raw text có thể rỗng. Vì vậy em xử lý raw_text an toàn để calculation vẫn lưu được vào MySQL.
+
+## 16. Bước 14: Backend trả kết quả về frontend
 
 ### `POST /extract`
 
@@ -515,7 +573,7 @@ Trả về đầy đủ:
 - `effort`
 - `schedule`
 
-## 16. Bước 14: Frontend hiển thị kết quả
+## 17. Bước 15: Frontend hiển thị kết quả
 
 ### File chính
 
@@ -538,7 +596,7 @@ Trả về đầy đủ:
 - `ChartPanel.jsx`
   - hiển thị biểu đồ phân bố độ phức tạp
 
-## 17. Test dùng để chứng minh gì
+## 18. Test dùng để chứng minh gì
 
 ### File chính
 
@@ -563,7 +621,7 @@ Nếu bị hỏi “làm sao chứng minh hệ thống chạy đúng?”, bạn 
 
 > Em có test ở 3 lớp: lớp API, lớp extraction-normalization, và lớp UCP calculator. Nhờ vậy em kiểm tra được từ parser tài liệu đến công thức tính cuối cùng.
 
-## 18. Câu trả lời nhanh khi bị hỏi “file nào làm gì?”
+## 19. Câu trả lời nhanh khi bị hỏi “file nào làm gì?”
 
 - nhận request backend:
   - `backend/app/api/routes/analysis.py`
@@ -589,13 +647,23 @@ Nếu bị hỏi “làm sao chứng minh hệ thống chạy đúng?”, bạn 
 - tính UCP:
   - `backend/app/services/ucp_calculator.py`
 
+- lưu kết quả vào MySQL:
+  - `backend/app/database.py`
+  - `backend/app/repositories/analysis_repository.py`
+  - `backend/database/schema.sql`
+
+- xem/xóa lịch sử:
+  - `backend/app/api/routes/analysis.py`
+  - `frontend/src/components/HistoryPanel.jsx`
+  - `frontend/src/api/client.js`
+
 - giao diện chính:
   - `frontend/src/pages/HomePage.jsx`
 
 - gọi API từ frontend:
   - `frontend/src/api/client.js`
 
-## 19. Kết luận
+## 20. Kết luận
 
 Điểm mạnh của project là tách khá rõ thành các lớp:
 
