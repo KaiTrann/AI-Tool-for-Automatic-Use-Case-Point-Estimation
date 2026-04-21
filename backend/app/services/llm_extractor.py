@@ -376,7 +376,12 @@ def _extract_from_use_case_documents(
     # Structured document dùng schema và field chuẩn,
     # nên chỉ normalize actor mạnh, còn use case thì giữ tên chính thức từ tài liệu.
     # Bước 5: làm sạch lần cuối trước khi trả về API.
-    actors = normalize_actors(raw_actors, source_text="")
+    actors = normalize_actors(
+        raw_actors,
+        source_text="",
+        allow_internal_systems=True,
+        preserve_original_labels=True,
+    )
     use_cases = normalize_structured_use_cases(raw_use_cases)
 
     notes = _build_notes(mode, file_name, combined_text)

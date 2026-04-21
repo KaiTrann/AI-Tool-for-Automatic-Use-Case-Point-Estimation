@@ -32,20 +32,39 @@ from app.services.mapping_config import (
 )
 from app.utils.parser import normalize_name, split_sentences
 
+# Bộ giá trị complexity hợp lệ trong toàn project.
+# Nếu dữ liệu ngoài 3 giá trị này thì không được đưa vào UCP calculator.
 ALLOWED_COMPLEXITIES = {"simple", "average", "complex"}
+
+# Regex bỏ article tiếng Anh ở đầu tên actor/use case.
+# Ví dụ: "the Customer" -> "Customer".
 ARTICLE_PATTERN = re.compile(r"^(the|a|an)\s+", re.IGNORECASE)
+
+# Pattern tìm actor trong câu dạng:
+# "The Customer can ..."
+# "A Student may ..."
 ACTOR_TRIGGER_PATTERN = re.compile(
     r"(?:the|a|an)\s+([a-z][a-z\s-]{0,50}?)\s+(?:can|may|must|should|will)\b",
     re.IGNORECASE,
 )
+
+# Pattern tìm actor trong câu dạng:
+# "The system allows Customer to ..."
 ALLOW_PATTERN = re.compile(
     r"allows\s+(?:the|a|an)?\s*([a-z][a-z\s-]{0,50}?)\s+to\b",
     re.IGNORECASE,
 )
+
+# Pattern tìm actor hệ thống ngoài:
+# "Payment Gateway", "Email Service", "External API"...
 EXTERNAL_TRIGGER_PATTERN = re.compile(
     r"(?:external\s+)?([a-z][a-z\s-]{0,50}?(?:service|gateway|api|provider|system))\b",
     re.IGNORECASE,
 )
+
+# Pattern nhận diện câu mô tả tác vụ nền.
+# Ví dụ: "System sends notification", "Email Service notifies user".
+# Các câu này thường không phải use case business-level.
 BACKGROUND_SUBJECT_ACTION_PATTERN = re.compile(
     r"^(?:the\s+)?(?:system|[a-z][a-z\s-]{0,50}?(?:service|gateway|api|provider|system))\s+"
     r"(?:sends?|notifies?|alerts?|logs?|stores?|saves?|updates?)\b",
@@ -71,7 +90,10 @@ def normalize_extraction_result(
     """Chuẩn hóa toàn bộ extraction result."""
     # Hàm này là "cổng vào" chính của layer normalization.
     # Mọi dữ liệu extraction đều nên đi qua đây trước khi tính UCP.
+    # Chuẩn hóa actor trước để loại System sai, gộp trùng và phân loại lại complexity.
     normalized_actors = normalize_actors(actors, source_text)
+
+    # Chuẩn hóa use case sau để sửa tên, loại internal step và phân loại lại complexity.
     normalized_use_cases = normalize_use_cases(use_cases, source_text)
     return normalized_actors, normalized_use_cases
 
@@ -83,6 +105,8 @@ def normalize_use_case_documents(
     normalized_documents: list[NormalizedUseCaseDocument] = []
 
     for use_case_document in use_case_documents:
+        # Mỗi document được xử lý độc lập để nếu một block lỗi,
+        # các block còn lại vẫn có thể tiếp tục.
         normalized_document = normalize_use_case_document(use_case_document)
         if normalized_document is not None:
             normalized_documents.append(normalized_document)
@@ -107,6 +131,8 @@ def normalize_structured_use_cases(
     normalized_items: list[UseCaseItem] = []
 
     for use_case in use_cases:
+        # Với structured use case, tên đã lấy từ field chính thức,
+        # nên chỉ trim và chuẩn hóa hiển thị, không rút gọn mạnh.
         cleaned_name = normalize_name(use_case.name).strip(" .,:;")
         if not cleaned_name:
             continue
@@ -117,8 +143,13 @@ def normalize_structured_use_cases(
 
         normalized_items.append(
             UseCaseItem(
+                # Title case để bảng frontend nhìn đồng nhất hơn.
                 name=_title_case_name(cleaned_name),
+
+                # Nếu complexity không hợp lệ thì fallback average để tránh crash demo.
                 complexity=_normalize_complexity(use_case.complexity) or "average",
+
+                # Giữ description vì trong structured document description có chứa "Transaction count".
                 description=use_case.description,
             )
         )
@@ -140,8 +171,15 @@ def normalize_use_case_document(
     """
     normalized_name = _standardize_use_case_name(use_case_document.use_case_name)
     if not normalized_name:
+        # Không có tên use case thì không thể tính UUCW, nên bỏ document này.
         return None
 
+    # `actors` là danh sách tổng hợp từ parser mới.
+    # Có thể đến từ field "Actors" trong IEEE/SRS template.
+    normalized_actor_list = [_standardize_actor_label(actor_name) for actor_name in use_case_document.actors]
+    normalized_actor_list = [actor_name for actor_name in normalized_actor_list if actor_name]
+
+    # `primary_actor` và `secondary_actors` dùng để tương thích với template cũ.
     primary_actor = _standardize_actor_label(use_case_document.primary_actor)
     secondary_actors = [_standardize_actor_label(actor_name) for actor_name in use_case_document.secondary_actors]
     secondary_actors = [actor_name for actor_name in secondary_actors if actor_name]
@@ -155,27 +193,65 @@ def normalize_use_case_document(
             secondary_actors = actor_candidates[1:] + secondary_actors
 
     if primary_actor is None and secondary_actors:
+        # Nếu chỉ có secondary nhưng không có primary,
+        # lấy actor đầu tiên làm primary để classifier có dữ liệu chính.
         primary_actor = secondary_actors.pop(0)
 
+    if primary_actor is None and normalized_actor_list:
+        # Với template mới chỉ có field "Actors",
+        # actor đầu tiên được xem là primary để pipeline vẫn chạy ổn định.
+        primary_actor = normalized_actor_list[0]
+
+    if normalized_actor_list and not secondary_actors:
+        # Các actor còn lại trở thành secondary actors.
+        secondary_actors = [actor_name for actor_name in normalized_actor_list if actor_name != primary_actor]
+
+    # Các tên field mới và cũ cùng được map về một danh sách step thống nhất.
+    # main_flow_steps là tên mới; main_success_scenario là tên cũ.
+    main_flow_steps = _clean_step_list(use_case_document.main_flow_steps or use_case_document.main_success_scenario)
+    alternative_flow_steps = _clean_step_list(
+        use_case_document.alternative_flow_steps or use_case_document.alternative_flows
+    )
+    exception_flow_steps = _clean_step_list(
+        use_case_document.exception_flow_steps or use_case_document.exception_flows
+    )
+    normalized_actor_list = _deduplicate_names(
+        [actor_name for actor_name in [primary_actor, *secondary_actors, *normalized_actor_list] if actor_name]
+    )
+
+    # Trả về object mới đã sạch hơn, nhưng vẫn giữ cả field cũ và field mới
+    # để các module khác trong project không bị gãy.
     return NormalizedUseCaseDocument(
         use_case_id=_clean_optional_multiline_text(use_case_document.use_case_id),
         use_case_name=normalized_name,
+        actors=normalized_actor_list,
         primary_actor=primary_actor,
         secondary_actors=_deduplicate_names(secondary_actors),
         description=_clean_optional_multiline_text(use_case_document.description),
+        goal=_clean_optional_multiline_text(use_case_document.goal),
         trigger=_clean_optional_multiline_text(use_case_document.trigger),
         preconditions=_clean_optional_multiline_text(use_case_document.preconditions),
         postconditions=_clean_optional_multiline_text(use_case_document.postconditions),
-        main_success_scenario=_clean_step_list(use_case_document.main_success_scenario),
-        alternative_flows=_clean_step_list(use_case_document.alternative_flows),
-        exception_flows=_clean_step_list(use_case_document.exception_flows),
+        functional_requirement=_clean_optional_multiline_text(use_case_document.functional_requirement),
+        main_flow_steps=main_flow_steps,
+        alternative_flow_steps=alternative_flow_steps,
+        exception_flow_steps=exception_flow_steps,
+        main_success_scenario=main_flow_steps,
+        alternative_flows=alternative_flow_steps,
+        exception_flows=exception_flow_steps,
         priority=_clean_optional_multiline_text(use_case_document.priority),
         business_rules=_clean_optional_multiline_text(use_case_document.business_rules),
+        source_template_type=use_case_document.source_template_type,
         notes=_clean_optional_multiline_text(use_case_document.notes),
     )
 
 
-def normalize_actors(actors: Iterable[ActorItem], source_text: str = "") -> list[ActorItem]:
+def normalize_actors(
+    actors: Iterable[ActorItem],
+    source_text: str = "",
+    allow_internal_systems: bool = False,
+    preserve_original_labels: bool = False,
+) -> list[ActorItem]:
     """Chuẩn hóa actor:
     - bỏ System
     - map human/external
@@ -189,7 +265,12 @@ def normalize_actors(actors: Iterable[ActorItem], source_text: str = "") -> list
 
     for actor in candidates:
         # Mỗi actor sẽ được làm sạch và gán complexity lại theo rule cố định.
-        normalized_actor = _normalize_actor_item(actor.name, actor.complexity)
+        normalized_actor = _normalize_actor_item(
+            actor.name,
+            actor.complexity,
+            allow_internal_systems=allow_internal_systems,
+            preserve_original_labels=preserve_original_labels,
+        )
         if normalized_actor is not None:
             normalized_items.append(normalized_actor)
 
@@ -235,22 +316,28 @@ def _extract_actor_candidates_from_text(text: str) -> list[ActorItem]:
 
     # Quét từ điển human actor trước để bắt các vai trò phổ biến đa domain.
     for keyword in sorted(HUMAN_ACTOR_KEYWORDS, key=len, reverse=True):
+        # Sort theo độ dài giảm dần để bắt cụm dài trước.
+        # Ví dụ "hotel manager" trước "manager".
         if re.search(rf"\b{re.escape(keyword)}\b", lowered_text):
             items.append(ActorItem(name=keyword.title(), complexity="complex"))
 
     # Quét tiếp external actor như gateway, service, api...
     for keyword in sorted(EXTERNAL_ACTOR_KEYWORDS, key=len, reverse=True):
+        # External actor được gán simple ngay từ candidate,
+        # sau đó vẫn được normalize lại ở bước sau.
         if re.search(rf"\b{re.escape(keyword)}\b", lowered_text):
             items.append(ActorItem(name=_title_case_name(keyword), complexity="simple"))
 
     # Các regex bên dưới dùng để bắt actor theo mẫu câu tự nhiên.
     for match in ACTOR_TRIGGER_PATTERN.findall(text):
+        # Actor tìm từ câu tự nhiên thường là human actor.
         items.append(ActorItem(name=_title_case_name(match), complexity="complex"))
 
     for match in ALLOW_PATTERN.findall(text):
         items.append(ActorItem(name=_title_case_name(match), complexity="complex"))
 
     for match in EXTERNAL_TRIGGER_PATTERN.findall(text):
+        # Actor có hậu tố service/gateway/api/system thường là external/simple.
         items.append(ActorItem(name=_title_case_name(match), complexity="simple"))
 
     return items
@@ -261,6 +348,7 @@ def _extract_use_case_candidates_from_text(text: str) -> list[UseCaseItem]:
     items: list[UseCaseItem] = []
 
     for sentence in split_sentences(text):
+        # Mỗi câu có thể sinh ra 0, 1 hoặc nhiều candidate use case.
         items.extend(_extract_use_case_candidates_from_sentence(sentence))
 
     return items
@@ -295,6 +383,8 @@ def _extract_use_case_candidates_from_sentence(sentence: str) -> list[UseCaseIte
     ]
 
     for pattern in patterns:
+        # Bỏ phần chủ ngữ để còn lại cụm hành động.
+        # Ví dụ: "The Customer can search books" -> "search books".
         action_text = re.sub(pattern, "", action_text, flags=re.IGNORECASE)
 
     # Tách nhiều hành động trong cùng một câu thành nhiều candidate riêng.
@@ -302,6 +392,8 @@ def _extract_use_case_candidates_from_sentence(sentence: str) -> list[UseCaseIte
     items: list[UseCaseItem] = []
 
     for segment in raw_segments:
+        # Mỗi segment là một action candidate.
+        # Complexity ban đầu đặt average, sau đó classifier sẽ sửa lại.
         cleaned_segment = normalize_name(segment).strip(" .:;")
         if not cleaned_segment:
             continue
@@ -310,7 +402,12 @@ def _extract_use_case_candidates_from_sentence(sentence: str) -> list[UseCaseIte
     return items
 
 
-def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
+def _normalize_actor_item(
+    name: str,
+    complexity: str,
+    allow_internal_systems: bool = False,
+    preserve_original_labels: bool = False,
+) -> ActorItem | None:
     """Chuẩn hóa một actor đơn lẻ."""
     cleaned_name = _clean_actor_name(name)
     if not cleaned_name:
@@ -318,8 +415,18 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
 
     lowered_name = cleaned_name.lower()
 
+    # Structured document mới có thể khai báo "System" hoặc "Dashboard System"
+    # như actor hợp lệ trong bảng actor/use case.
+    # Khi actor này đã đi kèm complexity hợp lệ từ classifier,
+    # mình giữ lại thay vì loại bỏ như luồng free-text thông thường.
+    keep_internal_system_actor = allow_internal_systems and lowered_name in {"system", "dashboard system"} and _normalize_complexity(complexity) in {
+        "simple",
+        "average",
+        "complex",
+    }
+
     # Bỏ các tên không được xem là actor trong UCP.
-    if lowered_name in IGNORE_AS_ACTOR:
+    if lowered_name in IGNORE_AS_ACTOR and not keep_internal_system_actor:
         return None
 
     # Nếu tên actor vẫn chứa các từ như "system" nhưng không phải external actor thật,
@@ -329,13 +436,15 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
         or lowered_name.startswith(f"{ignored} ")
         or lowered_name.endswith(f" {ignored}")
         for ignored in IGNORE_AS_ACTOR
-    ) and not (
+    ) and not keep_internal_system_actor and not (
         _is_external_actor_name(lowered_name)
         or _looks_like_interface_actor_name(lowered_name)
     ):
         return None
 
-    if lowered_name in ACTOR_NAME_NORMALIZATION:
+    if not preserve_original_labels and lowered_name in ACTOR_NAME_NORMALIZATION:
+        # Free-text có thể normalize "admin" -> "Administrator".
+        # Structured document có thể cần giữ nguyên label gốc nên có flag preserve_original_labels.
         cleaned_name = ACTOR_NAME_NORMALIZATION[lowered_name]
         lowered_name = cleaned_name.lower()
 
@@ -355,6 +464,8 @@ def _normalize_actor_item(name: str, complexity: str) -> ActorItem | None:
     # Nếu chưa match rule mạnh, thử giữ complexity gốc nếu nó hợp lệ.
     normalized_complexity = _normalize_complexity(complexity)
     if normalized_complexity in ALLOWED_COMPLEXITIES:
+        # Nếu classifier không nhận diện được actor nhưng extractor đã có complexity hợp lệ,
+        # giữ lại complexity đó để không mất dữ liệu.
         return ActorItem(name=_title_case_name(cleaned_name), complexity=normalized_complexity)
 
     # Fallback cuối cùng: nếu nhìn giống tên role nghiệp vụ thì xem như human actor.
@@ -385,6 +496,7 @@ def _normalize_use_case_item(
     # Ví dụ "update room availability" -> "Manage Room Information"
     merged_name = _apply_merge_rule(lowered_name)
     if merged_name is None and lowered_name in MERGE_RULES:
+        # Một số merge rule có target None nghĩa là loại bỏ hẳn use case.
         return None
     if merged_name is not None:
         canonical_name = merged_name
@@ -401,6 +513,8 @@ def _normalize_use_case_item(
     # Nếu use case đi từ template có description đi kèm,
     # ưu tiên complexity đã được tính từ Main Flow / Alternative Flow.
     if description and normalized_complexity:
+        # Structured document thường truyền complexity đã tính từ transaction count.
+        # Vì vậy ưu tiên giữ complexity đó thay vì keyword fallback.
         final_complexity = normalized_complexity
     else:
         final_complexity = inferred_complexity or normalized_complexity or "average"
@@ -432,6 +546,8 @@ def _extract_canonical_use_case_name(raw_name: str) -> str:
     matched_phrase = None
 
     for phrase in phrase_patterns:
+        # Tìm phrase dài trước để tránh match ngắn sai.
+        # Ví dụ "make payment" phải ưu tiên hơn "pay".
         if re.search(rf"\b{re.escape(phrase)}\b", lowered_name):
             matched_phrase = phrase
             break
@@ -440,6 +556,8 @@ def _extract_canonical_use_case_name(raw_name: str) -> str:
     # - cho phép giữ lại cụm ngắn <= 4 từ
     # - còn lại thì loại bỏ vì dễ là sentence fragment
     if matched_phrase is None:
+        # Nếu không có verb chuẩn nhưng tên ngắn,
+        # vẫn giữ lại vì có thể là use case lấy từ list trong SRS.
         if len(cleaned_name.split()) <= 4:
             return _title_case_name(cleaned_name)
         return ""
@@ -462,6 +580,8 @@ def _extract_canonical_use_case_name(raw_name: str) -> str:
         return "Make Payment"
 
     if remainder:
+        # Ghép verb chuẩn với noun/domain object còn lại.
+        # Ví dụ: "search rooms" -> "Search Rooms".
         return f"{canonical_verb} {_title_case_name(remainder)}"
 
     return canonical_verb
@@ -489,6 +609,7 @@ def _classify_use_case_complexity(name: str) -> str:
 
     # Sau đó mới kiểm tra prefix tường minh.
     for prefix in COMPLEX_USE_CASE_PREFIXES:
+        # Prefix rule rõ ràng được ưu tiên vì dễ giải thích trong báo cáo.
         if lowered_name.startswith(prefix.lower()):
             return "complex"
 
@@ -550,6 +671,7 @@ def _score_use_case_complexity(lowered_name: str) -> int:
     """
     # Score 3 được ưu tiên vì complex override average/simple.
     if _contains_action_keyword(lowered_name, COMPLEX_USE_CASE_ACTION_KEYWORDS):
+        # Complex phải kiểm tra trước vì complex override average/simple.
         return 3
 
     if _contains_action_keyword(lowered_name, AVERAGE_USE_CASE_ACTION_KEYWORDS):
@@ -580,6 +702,7 @@ def _clean_actor_name(name: str) -> str:
     """Làm sạch actor name."""
     cleaned_name = normalize_name(name)
     cleaned_name = ARTICLE_PATTERN.sub("", cleaned_name)
+    # Bỏ chữ "external" ở đầu vì đó là mô tả loại actor, không phải tên actor.
     cleaned_name = re.sub(r"^(external)\s+", "", cleaned_name, flags=re.IGNORECASE)
     cleaned_name = cleaned_name.strip(" .,:;")
     return cleaned_name
@@ -588,8 +711,11 @@ def _clean_actor_name(name: str) -> str:
 def _clean_use_case_text(name: str) -> str:
     """Làm sạch raw use case text."""
     cleaned_name = normalize_name(name)
+    # Bỏ "to" ở đầu vì extractor có thể lấy từ cụm "to register".
     cleaned_name = re.sub(r"^(to)\s+", "", cleaned_name, flags=re.IGNORECASE)
+    # Bỏ article tiếng Anh nếu có.
     cleaned_name = re.sub(r"^(the|a|an)\s+", "", cleaned_name, flags=re.IGNORECASE)
+    # Cắt các mệnh đề điều kiện/thời gian phía sau vì thường làm tên use case bị dài.
     cleaned_name = re.sub(r"\b(after|before|when|if)\b.*$", "", cleaned_name, flags=re.IGNORECASE)
     cleaned_name = cleaned_name.strip(" .,:;")
     return cleaned_name
@@ -599,6 +725,7 @@ def _normalize_complexity(value: str | None) -> str | None:
     """Đưa complexity về lowercase."""
     if value is None:
         return None
+    # Complexity được đưa về lowercase để thống nhất toàn hệ thống.
     cleaned_value = value.strip().lower()
     if cleaned_value in ALLOWED_COMPLEXITIES:
         return cleaned_value
@@ -608,6 +735,7 @@ def _normalize_complexity(value: str | None) -> str | None:
 def _is_human_actor_name(lowered_name: str) -> bool:
     """Kiểm tra actor có thuộc nhóm human hay không."""
     return any(
+        # Dùng word boundary để tránh match nhầm trong một từ dài hơn.
         re.search(rf"\b{re.escape(keyword)}\b", lowered_name)
         for keyword in HUMAN_ACTOR_KEYWORDS
     )
@@ -621,6 +749,7 @@ def _is_external_actor_name(lowered_name: str) -> bool:
     ):
         return True
 
+    # Fallback cho external actor chưa khai báo trong mapping_config.
     fallback_keywords = ("service", "api", "gateway", "provider")
     return any(keyword in lowered_name for keyword in fallback_keywords)
 
@@ -642,6 +771,7 @@ def _looks_like_role_name(lowered_name: str) -> bool:
         return False
 
     if any(word in IGNORE_AS_ACTOR for word in words):
+        # Không xem "system" hay "database" chung chung là human role.
         return False
 
     return any(word.endswith(suffix) for word in words for suffix in ROLE_LIKE_SUFFIXES)
@@ -670,6 +800,8 @@ def _is_internal_step(lowered_name: str) -> bool:
         return True
 
     if lowered_name.startswith("system "):
+        # Use case bắt đầu bằng "System ..." thường là hành vi nội bộ,
+        # không phải goal do actor bên ngoài khởi tạo.
         return True
 
     return False
@@ -679,6 +811,7 @@ def _looks_like_sentence_fragment(name: str) -> bool:
     """Loại bỏ sentence fragment không phải functional name."""
     lowered_name = name.lower()
     if lowered_name.startswith(("the ", "after ", "when ", "if ", "system ")):
+        # Functional name không nên bắt đầu bằng các từ mở đầu câu.
         return True
     if " allows " in lowered_name or " successful order " in lowered_name:
         return True
@@ -708,6 +841,7 @@ def _trim_trailing_filler_words(text: str) -> str:
     """Bỏ filler word ở cuối để tên use case gọn hơn."""
     words = text.split()
     while words and words[-1].lower() in TRAILING_USE_CASE_FILLER_WORDS:
+        # Lặp tới khi không còn filler ở cuối.
         words.pop()
     return " ".join(words)
 
@@ -743,18 +877,17 @@ def _standardize_actor_label(actor_name: str | None) -> str | None:
     if not cleaned_name:
         return None
 
-    if cleaned_name.lower() == "admin":
-        return "Administrator"
-
     words: list[str] = []
     for word in cleaned_name.split():
-        lowered_word = word.lower()
-        if lowered_word == "api":
-            words.append("API")
-        elif lowered_word == "db":
-            words.append("DB")
+        leading, core_word, trailing = _split_word_punctuation(word)
+        lowered_word = core_word.lower()
+        if lowered_word in {"api", "db", "hr", "erp", "crm", "sms", "kpi", "okr", "rbac"}:
+            words.append(f"{leading}{lowered_word.upper()}{trailing}")
         else:
-            words.append(word.capitalize())
+            if core_word:
+                words.append(f"{leading}{core_word[:1].upper()}{core_word[1:]}{trailing}")
+            else:
+                words.append(word)
 
     return " ".join(words)
 
@@ -816,13 +949,34 @@ def _title_case_name(name: str) -> str:
     formatted_words: list[str] = []
 
     for word in normalize_name(name).split():
-        lowered_word = word.lower()
-        if lowered_word in {"api", "db", "erp", "crm", "sms"}:
-            formatted_words.append(lowered_word.upper())
+        leading, core_word, trailing = _split_word_punctuation(word)
+        lowered_word = core_word.lower()
+        if lowered_word in {"api", "db", "erp", "crm", "sms", "hr", "kpi", "okr", "rbac"}:
+            formatted_words.append(f"{leading}{lowered_word.upper()}{trailing}")
         else:
-            formatted_words.append(word.capitalize())
+            if core_word:
+                formatted_words.append(f"{leading}{core_word[:1].upper()}{core_word[1:]}{trailing}")
+            else:
+                formatted_words.append(word)
 
     return " ".join(formatted_words)
+
+
+def _split_word_punctuation(word: str) -> tuple[str, str, str]:
+    """Tách dấu câu đầu/cuối để vẫn format đúng acronym nằm trong ngoặc."""
+    if not word:
+        return "", "", ""
+
+    start_index = 0
+    end_index = len(word)
+
+    while start_index < len(word) and not word[start_index].isalnum():
+        start_index += 1
+
+    while end_index > start_index and not word[end_index - 1].isalnum():
+        end_index -= 1
+
+    return word[:start_index], word[start_index:end_index], word[end_index:]
 
 
 def _contains_keyword(text: str, keywords: tuple[str, ...]) -> bool:
@@ -921,8 +1075,26 @@ def _is_more_specific_name(candidate_name: str, existing_name: str) -> bool:
     """Kiểm tra tên candidate có cụ thể hơn tên existing hay không."""
     candidate_words = candidate_name.lower().split()
     existing_words = existing_name.lower().split()
+    non_collapsing_generic_names = {
+        "system",
+        "application",
+        "platform",
+        "service",
+        "gateway",
+        "api",
+        "database",
+        "db",
+    }
 
     if candidate_name.lower() == existing_name.lower():
+        return False
+
+    # Không collapse các actor hệ thống chung kiểu:
+    # - System
+    # - Dashboard System
+    # - Payment Gateway
+    # vì trong tài liệu có cấu trúc chúng có thể là actor khác nhau thật.
+    if candidate_name.lower() in non_collapsing_generic_names or existing_name.lower() in non_collapsing_generic_names:
         return False
 
     if len(candidate_words) <= len(existing_words):

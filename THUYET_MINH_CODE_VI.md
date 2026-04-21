@@ -15,6 +15,7 @@ Hệ thống được xây để hỗ trợ `Use Case Point Estimation`.
 - `Requirements Text`
 - `Use Case Description`
 - file `Use Case Document / SRS`
+- file IEEE 830-1998 style SRS như HR/Payroll Dashboard
 
 Đầu ra gồm:
 - danh sách `Actor`
@@ -248,6 +249,7 @@ Nếu backend nhận ra đây là tài liệu có cấu trúc thì nó sẽ ưu 
 - giảm lỗi sentence fragment
 - lấy được actor sạch hơn
 - tính complexity chính xác hơn bằng transaction count
+- hỗ trợ được template IEEE/HR có `5.2 List of Use Case` và `5.4 Use Case Specification`
 
 ## 9. Bước 7: Parser tài liệu SRS / Use Case Document
 
@@ -262,17 +264,26 @@ Nếu backend nhận ra đây là tài liệu có cấu trúc thì nó sẽ ưu 
 Parser được sửa để:
 - không lấy mục lục làm use case
 - không lấy metadata như `Created by`, `Date updated`
-- chỉ parse từ phần `Use Case Specification` hoặc block `UC.xx`
+- đọc được cả `List of Use Case` và `Use Case Specification`
+- không phụ thuộc vào số section cố định như `2.4.5` hoặc `5.4`
 - tách đúng từng use case block
 
 ### Cách parser hoạt động
 
-1. tìm section có use case thật
-2. xác định từng block `UC.01`, `UC 02`, ...
-3. trong từng block chỉ đọc các field quan trọng
-4. lấy `Use case name` làm nguồn chính cho tên use case
-5. lấy `Actors` để chuẩn hóa actor
-6. tách `Main Flow`, `Alternative Flow`, `Exception Flow` thành danh sách bước
+1. tìm section `List of Use Case` nếu có
+2. đọc danh sách use case cấp cao từ bảng list
+3. tìm section `Use Case Specification`
+4. xác định từng block `UC.01`, `UC 02`, ...
+5. trong từng block chỉ đọc các field quan trọng
+6. merge dữ liệu list và block chi tiết bằng `Use Case ID`
+7. lấy `Use case name` làm nguồn chính cho tên use case
+8. lấy `Actors` để chuẩn hóa actor
+9. tách `Main Flow`, `Alternative Flow`, `Exception Flow` thành danh sách bước
+
+Với file IEEE/HR thật:
+- `5.2 List of Use Case` có thể chứa nhiều use case hơn phần đặc tả chi tiết
+- nếu một use case chỉ có trong list, hệ thống vẫn giữ use case đó
+- nếu có block chi tiết, hệ thống ưu tiên transaction count từ `Main Flow`
 
 ### `actor_normalizer.py` làm gì
 
@@ -543,6 +554,7 @@ Trả về đầy đủ:
 - `test_llm_extractor.py`
   - chứng minh parser, normalization, classifier hoạt động đúng
   - đặc biệt hữu ích khi demo file `.docx` hoặc SRS
+  - có test hồi quy cho template IEEE/SRS
 
 - `test_ucp_calculator.py`
   - chứng minh công thức UCP, effort, schedule đúng

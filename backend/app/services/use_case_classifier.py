@@ -33,12 +33,16 @@ def count_transactions_from_main_flow(
     """
     # Mỗi bước có ý nghĩa trong Main Success Scenario được xem là
     # một transaction candidate trong phạm vi đồ án này.
-    transaction_count = len(_filter_meaningful_steps(use_case_document.main_success_scenario))
+    main_steps = use_case_document.main_flow_steps or use_case_document.main_success_scenario
+    alternative_steps = use_case_document.alternative_flow_steps or use_case_document.alternative_flows
+    exception_steps = use_case_document.exception_flow_steps or use_case_document.exception_flows
+
+    transaction_count = len(_filter_meaningful_steps(main_steps))
 
     if include_alt:
         # Khi cần nghiên cứu sâu hơn, có thể cộng cả flow phụ và flow ngoại lệ.
-        transaction_count += len(_filter_meaningful_steps(use_case_document.alternative_flows))
-        transaction_count += len(_filter_meaningful_steps(use_case_document.exception_flows))
+        transaction_count += len(_filter_meaningful_steps(alternative_steps))
+        transaction_count += len(_filter_meaningful_steps(exception_steps))
 
     return transaction_count
 

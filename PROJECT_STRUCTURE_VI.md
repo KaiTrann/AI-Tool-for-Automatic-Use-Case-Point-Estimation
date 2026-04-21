@@ -295,6 +295,7 @@ Schedule = effort_hours / (team_size * 160)
 ```text
 backend/app/utils/
 ├─ actor_normalizer.py
+├─ field_aliases.py
 ├─ file_reader.py
 ├─ llm_json_parser.py
 ├─ normalization.py
@@ -336,9 +337,13 @@ Vai trò:
 
 Công dụng:
 - parser rule-based cho SRS / Use Case Document
+- hỗ trợ thêm template IEEE 830-1998 style SRS như HR/Payroll Dashboard
 
 Chức năng:
 - bỏ qua table of contents, metadata, revision history
+- đọc `5.2 List of Use Case`
+- đọc `5.4 Use Case Specification`
+- merge dữ liệu list và block chi tiết bằng `Use Case ID`
 - tách đúng từng block `UC.xx`
 - đọc các field như `Use Case Name`, `Actors`, `Main Flow`
 - tách step để phục vụ đếm transaction
@@ -346,6 +351,25 @@ Chức năng:
 Khi nào mở file này:
 - khi bị hỏi tại sao project đọc được `.docx` template
 - khi cần chứng minh parser không lấy nhầm mục lục
+- khi cần chứng minh project đọc được file IEEE/HR thật
+
+### `backend/app/utils/field_aliases.py`
+
+Công dụng:
+- khai báo alias field và section cho nhiều template SRS khác nhau
+
+Ví dụ alias đang hỗ trợ:
+- `Brief Description` / `Description`
+- `Goal` / `Objective`
+- `Pre-condition` / `Pre-conditions` / `Preconditions`
+- `Main Flow` / `Main Success Scenario`
+- `Alternative Flow` / `Alternative Scenario`
+- `Exception Flow` / `Exception`
+- `Business Rule` / `Business Rules`
+
+Khi nào mở file này:
+- khi file SRS thật có tên field khác template hiện tại
+- khi muốn thêm template mới mà không sửa nhiều logic parser
 
 ### `backend/app/utils/actor_normalizer.py`
 
@@ -519,6 +543,7 @@ Công dụng:
 
 - Parser tài liệu SRS / use case document:
   - `backend/app/utils/use_case_document_parser.py`
+  - `backend/app/utils/field_aliases.py`
 
 - Trích xuất actor/use case:
   - `backend/app/services/llm_extractor.py`

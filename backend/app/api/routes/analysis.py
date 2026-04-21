@@ -32,13 +32,19 @@ def _build_ucp_core_request(request_model: UcpCalculateRequest) -> tuple[UCPRequ
     # - bỏ trùng
     # - chuẩn hóa tên
     # - complexity đúng theo chuẩn UCP
-    normalized_actors = normalize_actors(request_model.actors, source_text="")
-
     # Nếu payload đến từ structured use case document,
     # description thường đã có "Transaction count: ...".
     # Khi đó cần giữ nguyên tên use case chính thức từ tài liệu,
     # không chạy lại normalize kiểu free-text để tránh mất use case hợp lệ.
-    if _looks_like_structured_use_case_payload(request_model.use_cases):
+    structured_payload = _looks_like_structured_use_case_payload(request_model.use_cases)
+    normalized_actors = normalize_actors(
+        request_model.actors,
+        source_text="",
+        allow_internal_systems=structured_payload,
+        preserve_original_labels=structured_payload,
+    )
+
+    if structured_payload:
         # Payload đến từ SRS / Use Case Document đã có transaction count,
         # nên phải giữ tên use case chính thức từ tài liệu.
         normalized_use_cases = normalize_structured_use_cases(request_model.use_cases)

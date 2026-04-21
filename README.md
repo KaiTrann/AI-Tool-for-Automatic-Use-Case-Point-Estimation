@@ -73,6 +73,10 @@ Hệ thống hiện đã hỗ trợ đọc nội dung từ:
 - `.docx`
 - `.doc` theo kiểu best-effort
 
+Các template đang được hỗ trợ:
+- SRS / Use Case Document kiểu cũ của project
+- IEEE 830-1998 style SRS, ví dụ file HR/Payroll có `5.2 List of Use Case` và `5.4 Use Case Specification`
+
 Nếu tài liệu có các mục như:
 - `Use Case ID`
 - `Use Case Name`
@@ -84,6 +88,12 @@ Nếu tài liệu có các mục như:
 - `Alternative Flow`
 
 thì backend sẽ ưu tiên parse theo cấu trúc tài liệu, không đoán kiểu free-text nữa.
+
+Với template IEEE/HR thật, parser sẽ:
+- đọc `5.2 List of Use Case` để lấy index use case cấp cao
+- đọc `5.4 Use Case Specification` để lấy actor, flow, transaction count
+- merge hai phần bằng `Use Case ID`
+- nếu một use case chỉ có trong list nhưng chưa có block chi tiết, hệ thống vẫn giữ use case đó và dùng fallback heuristic cho complexity
 
 ## 4. Cấu trúc thư mục chính
 
@@ -267,6 +277,7 @@ Luồng tổng quát:
 3. `llm_extractor.py` kiểm tra input là free-text hay Use Case Document.
 4. Nếu là tài liệu có cấu trúc:
    - parse bằng `use_case_document_parser.py`
+   - đọc alias field bằng `field_aliases.py`
    - chuẩn hóa bằng `normalization.py`
    - phân loại actor bằng `actor_classifier.py`
    - phân loại use case theo transaction count bằng `use_case_classifier.py`
@@ -286,7 +297,10 @@ Luồng tổng quát:
   - điều phối luồng extraction
 
 - `backend/app/utils/use_case_document_parser.py`
-  - parser tài liệu SRS / Use Case Document
+  - parser tài liệu SRS / Use Case Document, bao gồm template IEEE 830-1998 HR/Payroll
+
+- `backend/app/utils/field_aliases.py`
+  - khai báo alias field/section như `Brief Description`, `Goal`, `Main Flow`, `Alternative Flow`, `Business Rule`
 
 - `backend/app/utils/normalization.py`
   - lớp làm sạch dữ liệu trước khi tính UCP

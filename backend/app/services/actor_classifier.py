@@ -43,6 +43,10 @@ HUMAN_ROLE_KEYWORDS = (
     "employee",
     "officer",
     "clerk",
+    "hr manager",
+    "payroll manager",
+    "department manager",
+    "line manager",
 )
 
 SIMPLE_INTERFACE_KEYWORDS = (
@@ -116,12 +120,15 @@ def classify_actor(
     if role == "primary":
         return "complex"
 
-    # Secondary actor chưa rõ loại thì:
-    # - nếu tên giống hệ thống ngoài -> simple
-    # - nếu không rõ thì average để an toàn hơn là mặc định complex
+    # Các actor dạng "System" trong template IEEE/SRS mới
+    # được giữ lại như actor hệ thống thay vì loại bỏ.
+    # Ở đây mình xếp chúng về nhánh system actor đơn giản.
     if re.search(r"\b(system|application|platform)\b", lowered_name):
         return "simple"
 
+    # Secondary actor chưa rõ loại thì:
+    # - nếu tên giống hệ thống ngoài -> simple
+    # - nếu không rõ thì average để an toàn hơn là mặc định complex
     return "average"
 
 
@@ -130,6 +137,16 @@ def collect_classified_actors(use_case_documents: list[NormalizedUseCaseDocument
     actor_map: dict[str, tuple[str, str]] = {}
 
     for document in use_case_documents:
+        # Nếu parser mới đã gom toàn bộ actor vào document.actors,
+        # dùng danh sách này làm nguồn bao quát nhất.
+        if document.actors:
+            for actor_name in document.actors:
+                actor_role = "primary" if actor_name == document.primary_actor else "secondary"
+                actor_map.setdefault(
+                    actor_name.lower(),
+                    (actor_name, classify_actor(actor_name, role=actor_role, use_case_document=document)),
+                )
+
         # Primary actor thường là người khởi tạo use case,
         # nên được classify với role="primary".
         if document.primary_actor:
@@ -156,7 +173,9 @@ def _build_actor_context_text(use_case_document: NormalizedUseCaseDocument | Non
 
     parts = [
         use_case_document.description or "",
+        use_case_document.goal or "",
         use_case_document.trigger or "",
+        use_case_document.functional_requirement or "",
         use_case_document.notes or "",
         use_case_document.business_rules or "",
     ]
